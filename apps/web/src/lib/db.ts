@@ -492,6 +492,23 @@ export async function getFilingsFromChRest(companyNumber: string, limit = 50): P
   }
 }
 
+export async function getStatusBar(): Promise<{
+  filingsToday: number;
+  lastEventAt: Date | null;
+  companiesTotal: number;
+}> {
+  const rows = await sql`
+    SELECT
+      (SELECT count(*)::int FROM public.filings
+       WHERE ingested_at >= current_date) AS filings_today,
+      (SELECT max(published_at) FROM audit.events
+       WHERE published_at IS NOT NULL) AS last_event_at,
+      (SELECT count(*)::int FROM public.companies) AS companies_total
+  `;
+  const r = rows[0] as { filingsToday: number; lastEventAt: Date | null; companiesTotal: number };
+  return r;
+}
+
 export async function getStats(): Promise<{
   companies: number;
   filings: number;
