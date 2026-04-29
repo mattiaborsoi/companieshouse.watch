@@ -184,6 +184,18 @@ Full schema in `docs/DATA_MODEL.md`. Key things to know:
 
 ---
 
+## CH Streaming API — gotchas discovered in production
+
+- **Resource kinds** are `company-profile`, `company-officers`, `company-psc-individual` (and `company-psc-corporate-entity`, etc.) — not short forms
+- **Company number** is absent from officer and PSC event `data`; extract from `resource_uri` using regex `/company/([^/]+)/`
+- **`published_at`** is null on some events; use `COALESCE(..., now())` in the INSERT
+- **Date fields** are ISO strings in CH data; asyncpg requires Python `datetime.date` objects — always run through `date.fromisoformat()`
+- **Officer names** are `"SURNAME, Forename"` format in the stream
+- **filing-history stream** returns 503 intermittently; streamer retries with 30s back-off and that's fine
+- **REST rate limit**: 600 req/5 min ≈ 2/s; `ch_rest.py` enforces 0.6s delay
+
+---
+
 ## What to do next (Phase 1 completion)
 
 1. `make setup && make infra && make db-migrate` — get the schema applied
