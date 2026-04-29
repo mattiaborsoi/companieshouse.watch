@@ -7,8 +7,8 @@ setup:          ## Create local data directories (run once before first `make up
 
 # ── Stack lifecycle ──────────────────────────────────────────────────────────
 
-up:             ## Start Postgres, Redis, streamer, and worker
-	$(COMPOSE) up -d postgres redis streamer worker
+up:             ## Start Postgres, Redis, streamer, worker, and web
+	$(COMPOSE) up -d postgres redis streamer worker web
 
 down:           ## Stop and remove containers (data is preserved on disk)
 	$(COMPOSE) down
@@ -41,14 +41,17 @@ test:           ## Run the test suite inside a Docker container
 # ── Build ────────────────────────────────────────────────────────────────────
 
 build:          ## (Re)build all application images
-	$(COMPOSE) build streamer worker
+	$(COMPOSE) build streamer worker web
 
 build-no-cache: ## Rebuild images from scratch
-	$(COMPOSE) build --no-cache streamer worker
+	$(COMPOSE) build --no-cache streamer worker web
+
+backfill:       ## Pull ~1000 sample companies from CH REST API into Postgres
+	$(COMPOSE) run --rm worker python -m worker.backfill
 
 # ── Status ───────────────────────────────────────────────────────────────────
 
 ps:             ## Show running containers and health
 	$(COMPOSE) ps
 
-.PHONY: setup up down infra logs logs-streamer logs-worker db-migrate db-shell test build build-no-cache ps
+.PHONY: setup up down infra logs logs-streamer logs-worker db-migrate db-shell test build build-no-cache backfill ps

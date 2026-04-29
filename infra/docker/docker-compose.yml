@@ -80,6 +80,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  web:
+    build:
+      context: ../../apps/web
+    environment:
+      DATABASE_URL: postgresql://chwatch:chwatch@postgres:5432/chwatch
+      NODE_ENV: production
+    ports:
+      - "3030:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── Test runner (not started by default; call via `make test`) ─────────────
 
   test:

@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+
+  * {
+    @apply border-gray-200;
+  }
+
+  body {
+    @apply bg-white text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  .badge {
+    @apply inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium;
+  }
+
+  .card {
+    @apply rounded-lg border bg-white p-4 shadow-sm;
+  }
+
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+
+  .btn-secondary {
+    @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50;
+  }
+}

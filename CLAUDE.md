@@ -16,23 +16,31 @@ Full spec is in `docs/BUILD_PLAN.md` (architecture, phases, AI policy) and `docs
 
 ## Current implementation state
 
-**Phase 1 is scaffolded.** No data is flowing yet — the pipeline needs to be started and tested against the live stream.
+**Phase 1 complete. Phase 2 (web UI) scaffolded and running.** Data is flowing live from Companies House.
 
-What exists:
-- `infra/docker/docker-compose.yml` — full stack (Postgres 16, Redis 7, streamer, worker, migrate, test services)
-- `packages/db/alembic/` — Alembic migrations with the complete schema from `docs/DATA_MODEL.md`
-- `apps/streamer/` — Python 3.12 process consuming the CH streaming API, enqueuing arq jobs
+### Phase 1 — Data pipeline (complete)
+- `infra/docker/docker-compose.yml` — full stack (Postgres 16, Redis 7, streamer, worker, web, migrate, test)
+- `packages/db/alembic/` — Alembic migrations with the complete schema
+- `apps/streamer/` — Python 3.12 process consuming the CH streaming API (companies, officers, PSC; filing-history stream 503 from CH side — server outage, not our code)
 - `apps/worker/` — arq worker processing events, upserting into Postgres
-- `apps/worker/src/worker/normaliser.py` — address normaliser for anomaly detection
-- `apps/worker/tests/test_address_normaliser.py` — 89 tests (52 equivalent pairs, 20 non-colliding, edge cases) — all passing
+- `apps/worker/src/worker/normaliser.py` — address normaliser (89 tests, all passing)
+- `apps/worker/src/worker/backfill.py` — pulls ~1000 companies from CH REST API for dev data (`make backfill`)
 
-What doesn't exist yet:
-- `apps/web/` — Next.js frontend (Phase 2)
+### Phase 2 — Web UI (complete)
+- `apps/web/` — Next.js 15 (App Router), TypeScript, Tailwind CSS
+- `apps/web/src/app/page.tsx` — landing page with stats, recent filings table, SSE live ticker
+- `apps/web/src/app/feed/` — `/feed` page: full live feed with category filters and pause button
+- `apps/web/src/app/c/[number]/` — `/c/{number}` company profile: header, filings, officers, PSCs
+- `apps/web/src/app/search/` — `/search?q=` page: name/number ILIKE search
+- `apps/web/src/app/api/events/` — SSE endpoint polling Postgres for new filings every 5s
+- `apps/web/src/lib/db.ts` — typed queries (postgres npm package, camelCase transform)
+
+### Not yet built
 - `apps/llm-gateway/` — FastAPI LLM gateway (Phase 3)
 - Anomaly detector cron job (Phase 3)
 - XBRL financials parser (Phase 4)
 
-**Phase 1 exit criterion**: `psql` and see filings flowing in real time.
+**Web app runs on port 3030** (ports 3000 and 3001 were occupied by other containers on the dev machine).
 
 ---
 
@@ -55,7 +63,7 @@ make up
 
 ### Day-to-day
 ```bash
-make up             # start all services
+make up             # start all services (incl. web on :3030)
 make down           # stop (data preserved on disk)
 make logs           # tail all logs
 make logs-streamer  # tail streamer only
@@ -63,7 +71,11 @@ make logs-worker    # tail worker only
 make test           # run test suite in Docker
 make db-shell       # psql shell
 make ps             # container status
+make backfill       # pull ~1000 companies from CH REST API into Postgres
 ```
+
+### Web UI
+Open http://localhost:3030 after `make up`.
 
 ### Rebuild after code changes
 ```bash
@@ -86,17 +98,28 @@ make up             # restart services
     worker/             # Python: arq worker
       src/worker/
         main.py         # WorkerSettings, startup/shutdown hooks
-        tasks.py        # (exists as upserts.py + main.py)
         upserts.py      # upsert_company, upsert_filing, etc.
         normaliser.py   # address normaliser (pure function, tested)
         ch_rest.py      # CH REST API wrapper
+        backfill.py     # dev data seeder (~1000 companies from REST API)
         db.py           # asyncpg connection pool
         config.py
       tests/
         test_address_normaliser.py
       Dockerfile
     llm-gateway/        # Phase 3 — not yet created
-    web/                # Phase 2 — not yet created
+    web/                # Next.js 15 frontend
+      src/app/
+        page.tsx        # landing page (SSE live ticker + stats)
+        feed/           # /feed — live filing feed with filters
+        c/[number]/     # /c/{number} — company profile
+        search/         # /search?q= — name/number search
+        about/          # /about
+        api/events/     # SSE endpoint (polls Postgres every 5s)
+      src/lib/
+        db.ts           # typed Postgres queries (postgres npm)
+        utils.ts        # date formatting, badge colours
+      Dockerfile
   packages/
     db/
       alembic/
