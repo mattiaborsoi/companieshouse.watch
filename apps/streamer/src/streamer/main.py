@@ -80,7 +80,9 @@ async def consume_stream(
                             bound_log.warning("invalid_json", preview=line[:200])
                             continue
 
-                        tp = event.get("timepoint")
+                        # CH nests timepoint and published_at under event.event
+                        event_meta = event.get("event") or {}
+                        tp = event_meta.get("timepoint")
                         if tp is not None:
                             await redis.set(timepoint_key, str(tp))
 
@@ -89,6 +91,7 @@ async def consume_stream(
                             "enqueued",
                             timepoint=tp,
                             resource_kind=event.get("resource_kind"),
+                            published_at=event_meta.get("published_at"),
                         )
 
         except httpx.HTTPStatusError as exc:

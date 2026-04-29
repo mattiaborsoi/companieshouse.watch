@@ -6,10 +6,12 @@ and upserting the relevant entity into Postgres.
 """
 import json
 import logging
+import re
 
 import asyncpg
 import structlog
 from arq.connections import RedisSettings
+from arq.jobs import Retry
 
 from .ch_rest import get_company
 from .config import settings
@@ -21,13 +23,12 @@ from .upserts import (
     upsert_psc,
 )
 
-import re
-
 log = structlog.get_logger()
 
-# Regex to pull company_number out of a CH resource_uri such as
-# /company/12345678/appointments/... or /company/12345678/persons-with-...
 _COMPANY_NUMBER_RE = re.compile(r"/company/([^/]+)/")
+
+# How long to wait before retrying a job whose company hasn't appeared yet (seconds)
+_COMPANY_NOT_FOUND_RETRY_DELAY = 30
 
 
 def _extract_company_number(event: dict) -> str | None:
@@ -61,11 +62,14 @@ async def _ensure_company(pool: asyncpg.Pool, company_number: str) -> bool:
 
 async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
     pool: asyncpg.Pool = ctx["pool"]
+    job_try: int = ctx.get("job_try", 1)
 
     resource_kind = event.get("resource_kind", "")
     resource_id = event.get("resource_id", "")
-    published_at = event.get("published_at")
-    timepoint = event.get("timepoint")
+    # CH nests timepoint and published_at under event.event, not at top level
+    event_meta = event.get("event") or {}
+    published_at = event_meta.get("published_at")
+    timepoint = event_meta.get("timepoint")
     data = event.get("data") or {}
 
     # Inject company_number into data if absent (officers/PSC don't include it)
@@ -77,67 +81,91 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
         stream=stream_name,
         resource_kind=resource_kind,
         resource_id=resource_id,
+        attempt=job_try,
     )
 
     async with pool.acquire() as conn:
-        # 1. Log to audit.events (always, regardless of what happens next)
-        event_row_id = await conn.fetchval(
-            """
-            INSERT INTO audit.events (
-                source, resource_kind, resource_id, resource_uri,
-                ch_timepoint, published_at, payload, received_at
-            ) VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()), $7::jsonb, now())
-            RETURNING id
-            """,
-            f"stream:{stream_name}",
-            resource_kind,
-            resource_id,
-            event.get("resource_uri"),
-            timepoint,
-            published_at,
-            json.dumps(event),
-        )
+        # 1. Log to audit.events on first attempt only (avoid duplicate rows on retry)
+        if job_try == 1:
+            event_row_id = await conn.fetchval(
+                """
+                INSERT INTO audit.events (
+                    source, resource_kind, resource_id, resource_uri,
+                    ch_timepoint, published_at, payload, received_at
+                ) VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()), $7::jsonb, now())
+                ON CONFLICT DO NOTHING
+                RETURNING id
+                """,
+                f"stream:{stream_name}",
+                resource_kind,
+                resource_id,
+                event.get("resource_uri"),
+                timepoint,
+                published_at,
+                json.dumps(event),
+            )
+        else:
+            event_row_id = await conn.fetchval(
+                "SELECT id FROM audit.events WHERE source = $1 AND resource_id = $2 AND ch_timepoint = $3",
+                f"stream:{stream_name}",
+                resource_id,
+                timepoint,
+            )
 
         try:
-            # 2. Route by actual CH stream resource_kind values
             cn = data.get("company_number")
 
             if resource_kind == "company-profile":
                 await upsert_company(conn, data)
 
             elif resource_kind == "filing-history":
-                if cn:
-                    await _ensure_company(pool, cn)
+                if cn and not await _ensure_company(pool, cn):
+                    # Company not in REST API yet — retry after a delay (max 3 times)
+                    if job_try < 3:
+                        raise Retry(defer=_COMPANY_NOT_FOUND_RETRY_DELAY * job_try)
+                    bound_log.warning("company_not_found_giving_up", company_number=cn)
+                    return
                 await upsert_filing(conn, data)
 
             elif resource_kind == "company-officers":
-                if cn:
-                    await _ensure_company(pool, cn)
+                if cn and not await _ensure_company(pool, cn):
+                    if job_try < 3:
+                        raise Retry(defer=_COMPANY_NOT_FOUND_RETRY_DELAY * job_try)
+                    bound_log.warning("company_not_found_giving_up", company_number=cn)
+                    return
                 await upsert_officer_appointment(conn, data)
 
             elif resource_kind.startswith("company-psc"):
-                if cn:
-                    await _ensure_company(pool, cn)
+                if cn and not await _ensure_company(pool, cn):
+                    if job_try < 3:
+                        raise Retry(defer=_COMPANY_NOT_FOUND_RETRY_DELAY * job_try)
+                    bound_log.warning("company_not_found_giving_up", company_number=cn)
+                    return
                 await upsert_psc(conn, data)
 
             else:
                 bound_log.debug("unhandled_resource_kind")
 
-            # 3. Mark processed
-            await conn.execute(
-                "UPDATE audit.events SET processed_at = now() WHERE id = $1",
-                event_row_id,
-            )
+            if event_row_id:
+                await conn.execute(
+                    "UPDATE audit.events SET processed_at = now(), processing_error = NULL WHERE id = $1",
+                    event_row_id,
+                )
             bound_log.debug("processed")
 
+        except Retry:
+            bound_log.info("retrying_company_not_found_yet", company_number=cn)
+            raise
+
         except Exception as exc:
-            await conn.execute(
-                "UPDATE audit.events SET processing_error = $1 WHERE id = $2",
-                str(exc)[:500],
-                event_row_id,
-            )
+            if event_row_id:
+                await conn.execute(
+                    "UPDATE audit.events SET processing_error = $1 WHERE id = $2",
+                    str(exc)[:500],
+                    event_row_id,
+                )
             bound_log.exception("processing_failed", error=str(exc))
-            raise  # arq will retry
+            raise
 
 
 async def startup(ctx: dict) -> None:
@@ -163,3 +191,4 @@ class WorkerSettings:
     max_jobs = 20
     job_timeout = 60
     keep_result = 3600
+    max_tries = 3
