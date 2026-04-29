@@ -23,7 +23,7 @@ CH_STREAM_BASE = "https://stream.companieshouse.gov.uk"
 
 STREAMS = [
     "companies",
-    "filing-history",
+    "filings",
     "officers",
     "persons-with-significant-control",
 ]

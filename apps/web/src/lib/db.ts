@@ -234,6 +234,28 @@ export async function searchCompanies(query: string, limit = 20): Promise<Compan
   `;
 }
 
+export async function searchOfficers(query: string, limit = 20): Promise<(Officer & { appointmentCount: number })[]> {
+  return sql`
+    SELECT
+      o.officer_id,
+      o.forename,
+      o.surname,
+      o.name_full,
+      o.nationality,
+      o.country_of_residence,
+      o.occupation,
+      o.date_of_birth_year,
+      o.date_of_birth_month,
+      COUNT(a.officer_id)::int AS appointment_count
+    FROM public.officers o
+    LEFT JOIN public.appointments a USING (officer_id)
+    WHERE o.name_full ILIKE ${"%" + query + "%"}
+    GROUP BY o.officer_id
+    ORDER BY COUNT(a.officer_id) DESC, o.name_full
+    LIMIT ${limit}
+  `;
+}
+
 // Search Companies House REST API directly — used when local DB has no results
 export async function searchChRestApi(query: string): Promise<{
   companyNumber: string;
@@ -264,6 +286,206 @@ export async function searchChRestApi(query: string): Promise<{
       companyType: item.company_type as string ?? "unknown",
       dateOfCreation: item.date_of_creation as string ?? null,
       addressSnippet: item.address_snippet as string ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// On-demand CH REST hydration for company profile pages
+// ---------------------------------------------------------------------------
+
+function chRestClient() {
+  const key = process.env.CH_REST_KEY;
+  if (!key) return null;
+  const token = Buffer.from(`${key}:`).toString("base64");
+  return (path: string) =>
+    fetch(`https://api.company-information.service.gov.uk${path}`, {
+      headers: { Authorization: `Basic ${token}` },
+      next: { revalidate: 300 },
+    });
+}
+
+export interface ChRestCompany {
+  companyNumber: string;
+  name: string;
+  status: string;
+  type: string;
+  incorporatedOn: string | null;
+  dissolvedOn: string | null;
+  registeredAddress: Record<string, string>;
+  sicCodes: string[];
+  fromRest: true;
+}
+
+export interface ChRestOfficer {
+  nameFull: string;
+  role: string;
+  appointedOn: string | null;
+  resignedOn: string | null;
+  nationality: string | null;
+  occupation: string | null;
+}
+
+export interface ChRestPsc {
+  name: string | null;
+  kind: string;
+  naturesOfControl: string[];
+  notifiedOn: string | null;
+  ceasedOn: string | null;
+  nationality: string | null;
+  isAnonymised: boolean;
+}
+
+export async function getCompanyFromChRest(companyNumber: string): Promise<ChRestCompany | null> {
+  const client = chRestClient();
+  if (!client) return null;
+  try {
+    const res = await client(`/company/${companyNumber}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    const addr = d.registered_office_address ?? {};
+    return {
+      companyNumber: d.company_number,
+      name: d.company_name,
+      status: d.company_status ?? "unknown",
+      type: d.type ?? "unknown",
+      incorporatedOn: d.date_of_creation ?? null,
+      dissolvedOn: d.date_of_cessation ?? null,
+      registeredAddress: addr,
+      sicCodes: d.sic_codes ?? [],
+      fromRest: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getOfficersFromChRest(companyNumber: string): Promise<ChRestOfficer[]> {
+  const client = chRestClient();
+  if (!client) return [];
+  try {
+    const res = await client(`/company/${companyNumber}/officers?items_per_page=50`);
+    if (!res.ok) return [];
+    const d = await res.json();
+    return (d.items ?? []).map((o: Record<string, unknown>) => ({
+      nameFull: o.name as string ?? "",
+      role: o.officer_role as string ?? "unknown",
+      appointedOn: o.appointed_on as string ?? null,
+      resignedOn: o.resigned_on as string ?? null,
+      nationality: (o.nationality as string) ?? null,
+      occupation: (o.occupation as string) ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getPscsFromChRest(companyNumber: string): Promise<ChRestPsc[]> {
+  const client = chRestClient();
+  if (!client) return [];
+  try {
+    const res = await client(`/company/${companyNumber}/persons-with-significant-control`);
+    if (!res.ok) return [];
+    const d = await res.json();
+    return (d.items ?? []).map((p: Record<string, unknown>) => {
+      const kind = (p.kind as string) ?? "unknown";
+      const anon = kind.includes("super-secure");
+      return {
+        name: anon ? null : (p.name as string) ?? null,
+        kind,
+        naturesOfControl: (p.natures_of_control as string[]) ?? [],
+        notifiedOn: (p.notified_on as string) ?? null,
+        ceasedOn: (p.ceased_on as string) ?? null,
+        nationality: anon ? null : (p.nationality as string) ?? null,
+        isAnonymised: anon,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function getOfficer(officerId: string): Promise<Officer | null> {
+  const rows = await sql<Officer[]>`
+    SELECT officer_id, forename, surname, name_full, nationality,
+           country_of_residence, occupation, date_of_birth_year, date_of_birth_month
+    FROM public.officers
+    WHERE officer_id = ${officerId}
+  `;
+  return rows[0] ?? null;
+}
+
+export async function getOfficerAppointments(officerId: string): Promise<(Appointment & { companyName: string; companyStatus: string })[]> {
+  return sql`
+    SELECT
+      a.company_number,
+      a.officer_id,
+      a.role,
+      a.appointed_on,
+      a.resigned_on,
+      c.name AS company_name,
+      c.status AS company_status
+    FROM public.appointments a
+    JOIN public.companies c USING (company_number)
+    WHERE a.officer_id = ${officerId}
+    ORDER BY a.resigned_on NULLS FIRST, a.appointed_on DESC NULLS LAST
+  `;
+}
+
+export async function getRecentActivity(limit = 30): Promise<{
+  kind: "filing" | "officer" | "psc";
+  companyNumber: string;
+  companyName: string | null;
+  summary: string;
+  publishedAt: Date;
+}[]> {
+  return sql`
+    SELECT
+      CASE
+        WHEN e.resource_kind = 'filing-history'        THEN 'filing'
+        WHEN e.resource_kind = 'company-officers'      THEN 'officer'
+        WHEN e.resource_kind LIKE 'company-psc%'       THEN 'psc'
+        ELSE 'other'
+      END AS kind,
+      substring(e.resource_uri FROM '/company/([^/]+)/') AS company_number,
+      c.name AS company_name,
+      e.resource_kind AS summary,
+      e.published_at
+    FROM audit.events e
+    LEFT JOIN public.companies c
+      ON c.company_number = substring(e.resource_uri FROM '/company/([^/]+)/')
+    WHERE e.published_at IS NOT NULL
+      AND e.resource_kind IN ('filing-history', 'company-officers', 'company-psc-individual', 'company-psc-corporate-entity', 'company-psc-legal-person', 'company-psc-super-secure')
+    ORDER BY e.published_at DESC
+    LIMIT ${limit}
+  `;
+}
+
+export interface ChRestFiling {
+  transactionId: string;
+  category: string;
+  type: string;
+  description: string | null;
+  filingDate: string | null;
+  paperFiled: boolean;
+}
+
+export async function getFilingsFromChRest(companyNumber: string, limit = 50): Promise<ChRestFiling[]> {
+  const client = chRestClient();
+  if (!client) return [];
+  try {
+    const res = await client(`/company/${companyNumber}/filing-history?items_per_page=${limit}`);
+    if (!res.ok) return [];
+    const d = await res.json();
+    return (d.items ?? []).map((f: Record<string, unknown>) => ({
+      transactionId: f.transaction_id as string,
+      category: (f.category as string) ?? "unknown",
+      type: (f.type as string) ?? "unknown",
+      description: (f.description as string) ?? null,
+      filingDate: (f.date as string) ?? null,
+      paperFiled: Boolean(f.paper_filed),
     }));
   } catch {
     return [];
