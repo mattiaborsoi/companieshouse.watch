@@ -1,0 +1,13 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+# Install deps first so this layer is cached unless pyproject.toml changes
+COPY pyproject.toml .
+RUN pip install --no-cache-dir arq asyncpg httpx "redis>=5.0" "pydantic-settings>=2.4" structlog pytest pytest-asyncio
+
+# Copy source + tests and install the package itself
+COPY src/ src/
+COPY tests/ tests/
+RUN pip install --no-cache-dir --no-deps .
+
+CMD ["arq", "worker.main.WorkerSettings"]

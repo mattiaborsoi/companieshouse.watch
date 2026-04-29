@@ -1,0 +1,97 @@
+services:
+
+  # ── Data stores ────────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: chwatch
+      POSTGRES_USER: chwatch
+      POSTGRES_PASSWORD: chwatch
+    ports:
+      - "5432:5432"
+    volumes:
+      # Bind-mount to local disk so data survives container rebuilds
+      - ../../data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chwatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - ../../data/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+
+  # ── Schema migrations ───────────────────────────────────────────────────────
+  # Run once manually: docker compose -f infra/docker/docker-compose.yml run --rm migrate
+  # or: make db-migrate
+
+  migrate:
+    build:
+      context: ../../packages/db
+      dockerfile: ../../infra/docker/Dockerfile.migrate
+    environment:
+      DATABASE_URL_SYNC: postgresql://chwatch:chwatch@postgres:5432/chwatch
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
+
+  # ── Application services ────────────────────────────────────────────────────
+
+  streamer:
+    build:
+      context: ../../apps/streamer
+    environment:
+      CH_STREAM_KEY: ${CH_STREAM_KEY}
+      CH_REST_KEY: ${CH_REST_KEY}
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../../apps/worker
+    environment:
+      CH_REST_KEY: ${CH_REST_KEY}
+      DATABASE_URL: postgresql+asyncpg://chwatch:chwatch@postgres:5432/chwatch
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Test runner (not started by default; call via `make test`) ─────────────
+
+  test:
+    build:
+      context: ../../apps/worker
+    environment:
+      CH_REST_KEY: ${CH_REST_KEY:-test}
+      DATABASE_URL: postgresql+asyncpg://chwatch:chwatch@postgres:5432/chwatch
+      REDIS_URL: redis://redis:6379/0
+    command: python -m pytest tests/ -v
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - test
