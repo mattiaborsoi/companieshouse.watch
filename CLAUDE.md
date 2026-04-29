@@ -186,13 +186,29 @@ Full schema in `docs/DATA_MODEL.md`. Key things to know:
 
 ## CH Streaming API — gotchas discovered in production
 
+**Event envelope structure** (critical — get this wrong and nothing works):
+```json
+{
+  "resource_kind": "company-psc-individual",
+  "resource_id": "abc123",
+  "resource_uri": "/company/12345678/persons-with-significant-control/...",
+  "data": { ...entity fields... },
+  "event": {
+    "type": "changed",
+    "timepoint": 51040045,
+    "published_at": "2026-04-29T19:45:03"
+  }
+}
+```
+`timepoint` and `published_at` are nested under `event`, NOT at the top level.
+
 - **Resource kinds** are `company-profile`, `company-officers`, `company-psc-individual` (and `company-psc-corporate-entity`, etc.) — not short forms
 - **Company number** is absent from officer and PSC event `data`; extract from `resource_uri` using regex `/company/([^/]+)/`
-- **`published_at`** is null on some events; use `COALESCE(..., now())` in the INSERT
 - **Date fields** are ISO strings in CH data; asyncpg requires Python `datetime.date` objects — always run through `date.fromisoformat()`
 - **Officer names** are `"SURNAME, Forename"` format in the stream
-- **filing-history stream** returns 503 intermittently; streamer retries with 30s back-off and that's fine
+- **filing-history stream** returns 503 consistently with the stream key — likely a separate permission on the CH developer account. Check `developer-specs.company-information.service.gov.uk` for the account subscriptions.
 - **REST rate limit**: 600 req/5 min ≈ 2/s; `ch_rest.py` enforces 0.6s delay
+- **FK race condition**: officer/PSC events for brand-new companies arrive before the company-profile event. Worker retries up to 3× with 30s delay via arq `Retry`.
 
 ---
 
