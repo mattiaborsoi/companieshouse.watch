@@ -34,8 +34,10 @@ export default function FeedClient() {
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState("all");
   const [connected, setConnected] = useState(false);
+  const [total, setTotal] = useState(0);
   const bufferRef = useRef<FilingEvent[]>([]);
   const esRef = useRef<EventSource | null>(null);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const es = new EventSource("/api/events");
@@ -45,101 +47,120 @@ export default function FeedClient() {
     es.onmessage = (e) => {
       const ev: FilingEvent = JSON.parse(e.data);
       bufferRef.current = [ev, ...bufferRef.current].slice(0, MAX_EVENTS);
+      setTotal((t) => t + 1);
       if (!paused) {
         setEvents([...bufferRef.current]);
+        setNewIds((prev) => {
+          const next = new Set(prev);
+          next.add(ev.transactionId);
+          setTimeout(() => setNewIds((p) => { const n = new Set(p); n.delete(ev.transactionId); return n; }), 400);
+          return next;
+        });
       }
     };
     return () => { es.close(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When unpausing, flush buffer
   useEffect(() => {
-    if (!paused) {
-      setEvents([...bufferRef.current]);
-    }
+    if (!paused) setEvents([...bufferRef.current]);
   }, [paused]);
 
-  const visible = filter === "all"
-    ? events
-    : events.filter((e) => e.category === filter);
+  const visible = filter === "all" ? events : events.filter((e) => e.category === filter);
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
+      {/* Controls bar */}
       <div className="flex flex-wrap items-center gap-3">
+        {/* Category filters */}
         <div className="flex flex-wrap gap-1.5">
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setFilter(cat)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              className={`rounded-md border px-2.5 py-1 text-xs font-mono font-medium transition-all ${
                 filter === cat
-                  ? "border-brand-500 bg-brand-50 text-brand-700"
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)]"
+                  : "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
               }`}
             >
-              {cat === "all" ? "All" : filingCategoryLabel(cat)}
+              {cat === "all" ? "ALL" : filingCategoryLabel(cat).toUpperCase()}
             </button>
           ))}
         </div>
 
-        <button
-          onClick={() => setPaused((p) => !p)}
-          className={`ml-auto rounded-md border px-3 py-1.5 text-xs font-medium ${
-            paused
-              ? "border-orange-300 bg-orange-50 text-orange-700"
-              : "border-gray-200 bg-white text-gray-600"
-          }`}
-        >
-          {paused ? "▶ Resume" : "⏸ Pause"}
-        </button>
+        <div className="ml-auto flex items-center gap-3">
+          {total > 0 && (
+            <span className="font-mono text-xs text-[var(--text-muted)]">
+              {total.toLocaleString("en-GB")} received
+            </span>
+          )}
+          <button
+            onClick={() => setPaused((p) => !p)}
+            className={`rounded-md border px-3 py-1 text-xs font-mono font-medium transition-all ${
+              paused
+                ? "border-amber-700 bg-amber-950 text-amber-400"
+                : "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            }`}
+          >
+            {paused ? "▶ RESUME" : "⏸ PAUSE"}
+          </button>
 
-        <span className="flex items-center gap-1.5 text-xs text-gray-500">
-          <span
-            className={`h-2 w-2 rounded-full ${connected ? "bg-green-500 animate-pulse" : "bg-gray-300"}`}
-          />
-          {connected ? "live" : "connecting…"}
-        </span>
+          <span className="flex items-center gap-2 text-xs font-mono">
+            {connected ? (
+              <>
+                <span className="live-dot" />
+                <span className="text-[var(--live)]">LIVE</span>
+              </>
+            ) : (
+              <span className="text-[var(--text-muted)]">CONNECTING…</span>
+            )}
+          </span>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border bg-white">
+      <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
         {visible.length === 0 ? (
-          <div className="py-16 text-center text-sm text-gray-400">
-            {connected ? "Waiting for filings…" : "Connecting…"}
+          <div className="py-20 text-center font-mono text-sm text-[var(--text-muted)]">
+            {connected ? "WAITING FOR FILINGS…" : "CONNECTING TO STREAM…"}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead>
-              <tr className="border-b bg-gray-50 text-xs text-gray-500">
-                <th className="px-4 py-2 text-left">Company</th>
-                <th className="px-4 py-2 text-left">Category</th>
-                <th className="hidden px-4 py-2 text-left md:table-cell">Description</th>
-                <th className="px-4 py-2 text-right">Filed</th>
+              <tr>
+                <th>Company</th>
+                <th>Category</th>
+                <th className="hidden md:table-cell">Description</th>
+                <th className="text-right">Filed</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody>
               {visible.map((ev) => (
-                <tr key={ev.transactionId} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5">
+                <tr
+                  key={ev.transactionId}
+                  className={newIds.has(ev.transactionId) ? "animate-slide-in" : ""}
+                >
+                  <td>
                     <Link
                       href={`/c/${ev.companyNumber}`}
-                      className="font-medium text-gray-900 hover:underline"
+                      className="font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
                     >
                       {ev.companyName}
                     </Link>
-                    <div className="font-mono text-xs text-gray-400">{ev.companyNumber}</div>
+                    <div className="font-mono text-xs text-[var(--text-muted)] mt-0.5">
+                      {ev.companyNumber}
+                    </div>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className={`badge ${filingCategoryColor(ev.category)}`}>
+                  <td>
+                    <span className={`badge border ${filingCategoryColor(ev.category)}`}>
                       {filingCategoryLabel(ev.category)}
                     </span>
                   </td>
-                  <td className="hidden max-w-xs truncate px-4 py-2.5 text-gray-500 md:table-cell">
+                  <td className="hidden max-w-xs truncate md:table-cell text-xs text-[var(--text-secondary)]">
                     {ev.description || ev.type}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-gray-500">
+                  <td className="text-right font-mono text-xs text-[var(--text-muted)]">
                     {formatDate(ev.filingDate)}
                   </td>
                 </tr>
@@ -149,8 +170,8 @@ export default function FeedClient() {
         )}
       </div>
 
-      <p className="text-xs text-gray-400 text-center">
-        Showing up to {MAX_EVENTS} most recent events
+      <p className="text-center font-mono text-xs text-[var(--text-muted)]">
+        Showing up to {MAX_EVENTS} most recent · {paused ? "paused" : "live"}
       </p>
     </div>
   );

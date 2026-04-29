@@ -17,32 +17,32 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full">
-      <body className="flex min-h-full flex-col">
+    <html lang="en" className="h-full dark">
+      <body className="flex min-h-full flex-col bg-[var(--bg-base)] text-[var(--text-primary)]">
         <NavBar />
         <main className="flex-1">{children}</main>
-        <footer className="border-t py-6 text-center text-xs text-gray-400">
+        <footer className="mt-16 border-t border-[var(--border-subtle)] py-6 text-center text-xs text-[var(--text-muted)]">
           Data from{" "}
           <a
             href="https://www.companieshouse.gov.uk/"
-            className="underline hover:text-gray-600"
+            className="text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--accent)] hover:underline"
             target="_blank"
             rel="noopener noreferrer"
           >
             Companies House
           </a>{" "}
-          under the{" "}
+          under the Open Government Licence v3.0.{" "}
+          <a href="/about" className="text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--accent)] hover:underline">
+            About
+          </a>
+          {" · "}
           <a
-            href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
-            className="underline hover:text-gray-600"
+            href="https://github.com"
+            className="text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--accent)] hover:underline"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Open Government Licence v3.0
-          </a>
-          .{" "}
-          <a href="/about" className="underline hover:text-gray-600">
-            About
+            Open source
           </a>
         </footer>
       </body>

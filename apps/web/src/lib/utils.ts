@@ -19,13 +19,13 @@ export function timeAgo(d: Date | string | null | undefined): string {
 export function companyStatusClass(status: string): string {
   switch (status) {
     case "active":
-      return "text-green-700 bg-green-50 border-green-200";
+      return "bg-green-950 text-green-400 border-green-900";
     case "dissolved":
-      return "text-gray-500 bg-gray-50 border-gray-200";
+      return "bg-zinc-800 text-zinc-400 border-zinc-700";
     case "liquidation":
-      return "text-red-700 bg-red-50 border-red-200";
+      return "bg-red-950 text-red-400 border-red-900";
     default:
-      return "text-yellow-700 bg-yellow-50 border-yellow-200";
+      return "bg-yellow-950 text-yellow-400 border-yellow-900";
   }
 }
 
@@ -42,21 +42,24 @@ export function filingCategoryLabel(category: string): string {
     "persons-with-significant-control": "PSC",
     capital: "Capital",
     resolution: "Resolution",
+    "annual-return": "Annual Return",
   };
   return labels[category] ?? category;
 }
 
 export function filingCategoryColor(category: string): string {
   const colors: Record<string, string> = {
-    accounts: "bg-blue-50 text-blue-700 border-blue-200",
-    confirmation_statement: "bg-purple-50 text-purple-700 border-purple-200",
-    incorporation: "bg-green-50 text-green-700 border-green-200",
-    officers: "bg-orange-50 text-orange-700 border-orange-200",
-    address: "bg-teal-50 text-teal-700 border-teal-200",
-    mortgage: "bg-red-50 text-red-700 border-red-200",
-    insolvency: "bg-red-100 text-red-800 border-red-300",
-    dissolution: "bg-gray-100 text-gray-600 border-gray-300",
-    "persons-with-significant-control": "bg-indigo-50 text-indigo-700 border-indigo-200",
+    accounts:                           "bg-blue-950  text-blue-400   border-blue-900",
+    confirmation_statement:             "bg-violet-950 text-violet-400 border-violet-900",
+    incorporation:                      "bg-emerald-950 text-emerald-400 border-emerald-900",
+    officers:                           "bg-orange-950 text-orange-400 border-orange-900",
+    address:                            "bg-teal-950   text-teal-400   border-teal-900",
+    mortgage:                           "bg-red-950    text-red-400    border-red-900",
+    insolvency:                         "bg-red-950    text-red-400    border-red-900",
+    dissolution:                        "bg-zinc-800   text-zinc-400   border-zinc-700",
+    "persons-with-significant-control": "bg-indigo-950 text-indigo-400 border-indigo-900",
+    capital:                            "bg-sky-950    text-sky-400    border-sky-900",
+    resolution:                         "bg-amber-950  text-amber-400  border-amber-900",
   };
-  return colors[category] ?? "bg-gray-50 text-gray-600 border-gray-200";
+  return colors[category] ?? "bg-zinc-800 text-zinc-400 border-zinc-700";
 }

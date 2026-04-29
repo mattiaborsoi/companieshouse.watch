@@ -5,35 +5,124 @@
 @layer base {
   :root {
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+    /* Dark palette (default) */
+    --bg-base:     #09090b;   /* zinc-950 */
+    --bg-surface:  #18181b;   /* zinc-900 */
+    --bg-elevated: #27272a;   /* zinc-800 */
+    --border:      #3f3f46;   /* zinc-700 */
+    --border-subtle: #27272a;
+    --text-primary: #fafafa;  /* zinc-50 */
+    --text-secondary: #a1a1aa; /* zinc-400 */
+    --text-muted:  #52525b;   /* zinc-600 */
+    --accent:      #22d3ee;   /* cyan-400 */
+    --accent-dim:  #0891b2;   /* cyan-600 */
+    --live:        #22c55e;   /* green-500 */
   }
 
   * {
-    @apply border-gray-200;
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-white text-gray-900 antialiased;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-feature-settings: "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  ::selection {
+    background-color: var(--accent);
+    color: var(--bg-base);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-base); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 }
 
 @layer components {
-  .badge {
-    @apply inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium;
-  }
-
+  /* Surface cards */
   .card {
-    @apply rounded-lg border bg-white p-4 shadow-sm;
+    @apply rounded-lg border bg-[var(--bg-surface)] p-4;
+    border-color: var(--border-subtle);
   }
 
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium font-mono tracking-wide;
+  }
+
+  /* Buttons */
   .btn {
-    @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors;
+    @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-1 focus:ring-offset-[var(--bg-base)];
   }
-
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply btn bg-[var(--accent)] text-[var(--bg-base)] font-semibold hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)];
+    border-color: var(--border);
   }
 
-  .btn-secondary {
-    @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50;
+  /* Live dot */
+  .live-dot {
+    @apply relative inline-flex h-2 w-2;
   }
+  .live-dot::before {
+    @apply absolute inline-flex h-full w-full animate-ping rounded-full opacity-60;
+    content: "";
+    background-color: var(--live);
+  }
+  .live-dot::after {
+    @apply relative inline-flex h-2 w-2 rounded-full;
+    content: "";
+    background-color: var(--live);
+  }
+
+  /* Data table */
+  .data-table {
+    @apply w-full text-sm;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .data-table thead tr th {
+    @apply px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .data-table tbody tr {
+    @apply transition-colors duration-75;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .data-table tbody tr:last-child {
+    border-bottom: none;
+  }
+  .data-table tbody tr:hover {
+    background-color: var(--bg-elevated);
+  }
+  .data-table tbody tr td {
+    @apply px-4 py-3;
+  }
+
+  /* Mono number */
+  .mono {
+    @apply font-mono tabular-nums;
+  }
+}
+
+/* Animate new rows sliding in */
+@keyframes slide-in-top {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-in {
+  animation: slide-in-top 0.2s ease-out forwards;
 }

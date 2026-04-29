@@ -47,45 +47,47 @@ export default async function CompanyPage({ params }: Props) {
     addr.locality,
     addr.region,
     addr.postal_code,
-    addr.country,
   ].filter(Boolean);
 
   const activeOfficers = officers.filter((o) => !o.resignedOn);
   const formerOfficers = officers.filter((o) => o.resignedOn);
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 space-y-8">
+    <div className="mx-auto max-w-4xl px-4 py-8 space-y-10">
       {/* Header */}
-      <div className="space-y-2">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-start gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">{company.name}</h1>
-          <span className={`badge mt-1 ${companyStatusClass(company.status)}`}>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] leading-tight">
+            {company.name}
+          </h1>
+          <span className={`badge mt-1 border ${companyStatusClass(company.status)}`}>
             {company.status}
           </span>
         </div>
-        <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-          <span>
-            <span className="font-mono">{company.companyNumber}</span>
-          </span>
+
+        {/* Meta row */}
+        <div className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-[var(--text-muted)]">
+          <span className="text-[var(--text-secondary)]">{company.companyNumber}</span>
           <span>{company.type}</span>
           {company.incorporatedOn && (
-            <span>Incorporated {formatDate(company.incorporatedOn)}</span>
+            <span>Inc. {formatDate(company.incorporatedOn)}</span>
           )}
           {company.dissolvedOn && (
-            <span className="text-red-500">Dissolved {formatDate(company.dissolvedOn)}</span>
+            <span className="text-red-400">Dissolved {formatDate(company.dissolvedOn)}</span>
+          )}
+          {addressLines.length > 0 && (
+            <span>{addressLines.join(", ")}</span>
           )}
         </div>
 
-        {addressLines.length > 0 && (
-          <address className="not-italic text-sm text-gray-600">
-            {addressLines.join(", ")}
-          </address>
-        )}
-
+        {/* SIC codes */}
         {company.sicCodes.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {company.sicCodes.map((sic) => (
-              <span key={sic} className="badge border-gray-200 bg-gray-50 text-gray-600">
+              <span
+                key={sic}
+                className="badge border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+              >
                 SIC {sic}
               </span>
             ))}
@@ -94,7 +96,7 @@ export default async function CompanyPage({ params }: Props) {
 
         <a
           href={`https://find-and-update.company-information.service.gov.uk/company/${company.companyNumber}`}
-          className="inline-text text-xs text-brand-600 hover:underline"
+          className="inline-block text-xs text-[var(--accent)] hover:underline underline-offset-2"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -102,35 +104,38 @@ export default async function CompanyPage({ params }: Props) {
         </a>
       </div>
 
+      {/* Divider */}
+      <div className="border-t border-[var(--border-subtle)]" />
+
       {/* Filings */}
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-gray-900">
-          Filing history ({filings.length})
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Filing history · {filings.length}
         </h2>
         {filings.length === 0 ? (
-          <p className="text-sm text-gray-400">No filings recorded yet.</p>
+          <p className="text-sm text-[var(--text-muted)]">No filings recorded yet.</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border bg-white">
-            <table className="w-full text-sm">
+          <div className="overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+            <table className="data-table">
               <thead>
-                <tr className="border-b bg-gray-50 text-xs text-gray-500">
-                  <th className="px-4 py-2 text-left">Category</th>
-                  <th className="px-4 py-2 text-left">Description</th>
-                  <th className="px-4 py-2 text-right">Date</th>
+                <tr>
+                  <th>Category</th>
+                  <th>Description</th>
+                  <th className="text-right">Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody>
                 {filings.map((f) => (
-                  <tr key={f.transactionId} className="hover:bg-gray-50">
-                    <td className="px-4 py-2">
-                      <span className={`badge ${filingCategoryColor(f.category)}`}>
+                  <tr key={f.transactionId}>
+                    <td>
+                      <span className={`badge border ${filingCategoryColor(f.category)}`}>
                         {filingCategoryLabel(f.category)}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-gray-600">
+                    <td className="text-xs text-[var(--text-secondary)]">
                       {f.description || f.type}
                     </td>
-                    <td className="px-4 py-2 text-right text-gray-500">
+                    <td className="text-right font-mono text-xs text-[var(--text-muted)]">
                       {formatDate(f.filingDate)}
                     </td>
                   </tr>
@@ -142,28 +147,32 @@ export default async function CompanyPage({ params }: Props) {
       </section>
 
       {/* Officers */}
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-gray-900">
-          Current officers ({activeOfficers.length})
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Current officers · {activeOfficers.length}
         </h2>
         {activeOfficers.length === 0 ? (
-          <p className="text-sm text-gray-400">No current officers recorded.</p>
+          <p className="text-sm text-[var(--text-muted)]">No current officers recorded.</p>
         ) : (
-          <div className="rounded-lg border bg-white divide-y text-sm">
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
             {activeOfficers.map((a) => (
               <div key={`${a.officerId}-${a.role}-${String(a.appointedOn)}`} className="px-4 py-3">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <span className="font-medium text-gray-900">{a.officer?.nameFull ?? "Unknown"}</span>
+                    <span className="font-medium text-[var(--text-primary)]">
+                      {a.officer?.nameFull ?? "Unknown"}
+                    </span>
                     {a.officer?.nationality && (
-                      <span className="ml-2 text-gray-500">{a.officer.nationality}</span>
+                      <span className="ml-2 text-xs text-[var(--text-muted)]">
+                        {a.officer.nationality}
+                      </span>
                     )}
                   </div>
-                  <span className="badge border-gray-200 bg-gray-50 text-gray-600 shrink-0">
+                  <span className="badge shrink-0 border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
                     {a.role}
                   </span>
                 </div>
-                <div className="mt-0.5 text-xs text-gray-400">
+                <div className="mt-1 font-mono text-xs text-[var(--text-muted)]">
                   Appointed {formatDate(a.appointedOn)}
                   {a.officer?.occupation && ` · ${a.officer.occupation}`}
                 </div>
@@ -173,20 +182,22 @@ export default async function CompanyPage({ params }: Props) {
         )}
 
         {formerOfficers.length > 0 && (
-          <details className="mt-3">
-            <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700">
-              {formerOfficers.length} former officer{formerOfficers.length !== 1 ? "s" : ""}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors select-none font-mono uppercase tracking-wide">
+              {formerOfficers.length} former officer{formerOfficers.length !== 1 ? "s" : ""} ▸
             </summary>
-            <div className="mt-2 rounded-lg border bg-white divide-y text-sm opacity-60">
+            <div className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)] opacity-50">
               {formerOfficers.map((a) => (
                 <div key={`${a.officerId}-${a.role}-${String(a.appointedOn)}`} className="px-4 py-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-medium text-gray-700">{a.officer?.nameFull ?? "Unknown"}</span>
-                    <span className="badge border-gray-200 bg-gray-50 text-gray-600 shrink-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-medium text-[var(--text-secondary)]">
+                      {a.officer?.nameFull ?? "Unknown"}
+                    </span>
+                    <span className="badge shrink-0 border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
                       {a.role}
                     </span>
                   </div>
-                  <div className="mt-0.5 text-xs text-gray-400">
+                  <div className="mt-1 font-mono text-xs text-[var(--text-muted)]">
                     {formatDate(a.appointedOn)} – {formatDate(a.resignedOn)}
                   </div>
                 </div>
@@ -197,38 +208,44 @@ export default async function CompanyPage({ params }: Props) {
       </section>
 
       {/* PSCs */}
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-gray-900">
-          Persons with significant control ({pscs.filter((p) => !p.ceasedOn).length} active)
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Persons with significant control · {pscs.filter((p) => !p.ceasedOn).length} active
         </h2>
         {pscs.length === 0 ? (
-          <p className="text-sm text-gray-400">No PSC records.</p>
+          <p className="text-sm text-[var(--text-muted)]">No PSC records.</p>
         ) : (
-          <div className="rounded-lg border bg-white divide-y text-sm">
+          <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
             {pscs.map((p) => (
-              <div key={p.chPscLink} className={`px-4 py-3 ${p.ceasedOn ? "opacity-50" : ""}`}>
+              <div
+                key={p.chPscLink}
+                className={`px-4 py-3 ${p.ceasedOn ? "opacity-40" : ""}`}
+              >
                 {p.isAnonymised ? (
-                  <div className="text-gray-500 italic">
-                    Super-secure PSC (details withheld under legislation)
-                  </div>
+                  <p className="text-sm text-[var(--text-muted)] italic">
+                    Super-secure PSC — details withheld under legislation
+                  </p>
                 ) : (
                   <>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-gray-900">{p.name}</span>
-                      <span className="badge border-gray-200 bg-gray-50 text-gray-600 shrink-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-medium text-[var(--text-primary)]">{p.name}</span>
+                      <span className="badge shrink-0 border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
                         {p.kind.replace("company-psc-", "")}
                       </span>
                     </div>
                     {p.naturesOfControl.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
+                      <div className="mt-1.5 flex flex-wrap gap-1">
                         {p.naturesOfControl.map((noc) => (
-                          <span key={noc} className="badge border-indigo-200 bg-indigo-50 text-indigo-700">
+                          <span
+                            key={noc}
+                            className="badge border border-indigo-900 bg-indigo-950 text-indigo-400"
+                          >
                             {noc.replace(/-/g, " ")}
                           </span>
                         ))}
                       </div>
                     )}
-                    <div className="mt-0.5 text-xs text-gray-400">
+                    <div className="mt-1 font-mono text-xs text-[var(--text-muted)]">
                       Notified {formatDate(p.notifiedOn)}
                       {p.ceasedOn && ` · Ceased ${formatDate(p.ceasedOn)}`}
                       {p.nationality && ` · ${p.nationality}`}
