@@ -4,11 +4,22 @@ Each function is idempotent — safe to call multiple times with the same data.
 """
 import json
 import re
+from datetime import date
 
 import asyncpg
 import structlog
 
 from .normaliser import normalise_address
+
+
+def _d(value: str | None) -> date | None:
+    """Parse an ISO date string to datetime.date; asyncpg requires the object, not a string."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
 
 log = structlog.get_logger()
 
@@ -102,8 +113,8 @@ async def upsert_company(conn: asyncpg.Connection, data: dict) -> None:
         data.get("company_status_detail"),
         data.get("type") or "unknown",
         data.get("jurisdiction") or "england-wales",
-        data.get("date_of_creation"),
-        data.get("date_of_cessation"),
+        _d(data.get("date_of_creation")),
+        _d(data.get("date_of_cessation")),
         json.dumps(addr),
         postcode,
         addr_hash,
@@ -111,9 +122,9 @@ async def upsert_company(conn: asyncpg.Connection, data: dict) -> None:
         bool(data.get("has_charges")),
         bool(data.get("has_insolvency_history")),
         bool(data.get("has_been_liquidated")),
-        accounts.get("next_due"),
-        (accounts.get("last_accounts") or {}).get("made_up_to"),
-        cs.get("next_due"),
+        _d(accounts.get("next_due")),
+        _d((accounts.get("last_accounts") or {}).get("made_up_to")),
+        _d(cs.get("next_due")),
         json.dumps(data),
         data.get("etag"),
     )
@@ -166,8 +177,8 @@ async def upsert_filing(conn: asyncpg.Connection, data: dict) -> None:
         data.get("subcategory"),
         data.get("description") or "",
         json.dumps(data.get("description_values") or {}),
-        data.get("date"),
-        data.get("action_date"),
+        _d(data.get("date")),
+        _d(data.get("action_date")),
         bool(data.get("paper_filed")),
         data.get("pages"),
         links.get("document_metadata"),
@@ -186,20 +197,22 @@ async def upsert_officer_appointment(conn: asyncpg.Connection, data: dict) -> No
     resolution — one officer record per ch_officer_link.
     """
     links = data.get("links") or {}
-    officer_link = links.get("officer", {}).get("appointments") or links.get("self")
+    # CH stream uses links.self for the appointment; links.officer.appointments for the person
+    officer_link = (
+        (links.get("officer") or {}).get("appointments")
+        or links.get("self")
+    )
 
     if not officer_link:
         log.warning("officer_missing_link", data=str(data)[:200])
         return
 
-    company_number = data.get("company_number") or (
-        # Sometimes embedded in the appointed_to field
-        (data.get("appointed_to") or {}).get("company_number")
-    )
+    company_number = data.get("company_number")
     if not company_number:
         log.warning("officer_missing_company", data=str(data)[:200])
         return
 
+    # CH formats officer names as "SURNAME, Forename Other" in the stream
     name_full = data.get("name") or ""
     name_parts = name_full.split(",", 1)
     surname = name_parts[0].strip() if name_parts else name_full
@@ -283,8 +296,8 @@ async def upsert_officer_appointment(conn: asyncpg.Connection, data: dict) -> No
         company_number,
         officer_id,
         role,
-        appointed_on,
-        resigned_on,
+        _d(appointed_on),
+        _d(resigned_on),
         not bool(appointed_on),
         json.dumps(data.get("address") or {}),
         json.dumps(data),
@@ -296,7 +309,8 @@ async def upsert_officer_appointment(conn: asyncpg.Connection, data: dict) -> No
 # ---------------------------------------------------------------------------
 
 async def upsert_psc(conn: asyncpg.Connection, data: dict) -> None:
-    ch_psc_link = (data.get("links") or {}).get("self")
+    links = data.get("links") or {}
+    ch_psc_link = links.get("self")
     company_number = data.get("company_number")
 
     if not ch_psc_link or not company_number:
@@ -353,8 +367,8 @@ async def upsert_psc(conn: asyncpg.Connection, data: dict) -> None:
         json.dumps(name_elements) if name_elements else None,
         is_anonymised,
         data.get("natures_of_control") or [],
-        data.get("notified_on"),
-        data.get("ceased_on"),
+        _d(data.get("notified_on")),
+        _d(data.get("ceased_on")),
         None if is_anonymised else dob.get("year"),
         None if is_anonymised else dob.get("month"),
         None if is_anonymised else data.get("nationality"),

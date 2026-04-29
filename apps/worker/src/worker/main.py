@@ -21,15 +21,24 @@ from .upserts import (
     upsert_psc,
 )
 
+import re
+
 log = structlog.get_logger()
 
-# Maps stream name → resource_kind values we expect from that stream
-_STREAM_KINDS = {
-    "companies": {"company"},
-    "filing-history": {"filing"},
-    "officers": {"officer"},
-    "persons-with-significant-control": {"persons-with-significant-control", "psc"},
-}
+# Regex to pull company_number out of a CH resource_uri such as
+# /company/12345678/appointments/... or /company/12345678/persons-with-...
+_COMPANY_NUMBER_RE = re.compile(r"/company/([^/]+)/")
+
+
+def _extract_company_number(event: dict) -> str | None:
+    """Try data.company_number first; fall back to parsing resource_uri."""
+    data = event.get("data") or {}
+    cn = data.get("company_number")
+    if cn:
+        return cn
+    uri = event.get("resource_uri") or ""
+    m = _COMPANY_NUMBER_RE.search(uri)
+    return m.group(1) if m else None
 
 
 async def _ensure_company(pool: asyncpg.Pool, company_number: str) -> bool:
@@ -59,6 +68,11 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
     timepoint = event.get("timepoint")
     data = event.get("data") or {}
 
+    # Inject company_number into data if absent (officers/PSC don't include it)
+    company_number = _extract_company_number(event)
+    if company_number and not data.get("company_number"):
+        data = {**data, "company_number": company_number}
+
     bound_log = log.bind(
         stream=stream_name,
         resource_kind=resource_kind,
@@ -72,7 +86,7 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
             INSERT INTO audit.events (
                 source, resource_kind, resource_id, resource_uri,
                 ch_timepoint, published_at, payload, received_at
-            ) VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::jsonb, now())
+            ) VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()), $7::jsonb, now())
             RETURNING id
             """,
             f"stream:{stream_name}",
@@ -84,29 +98,26 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
             json.dumps(event),
         )
 
-        # 2. Route to entity upsert
-        company_number = (
-            data.get("company_number")
-            or (data.get("appointed_to") or {}).get("company_number")
-        )
-
         try:
-            if resource_kind == "company":
+            # 2. Route by actual CH stream resource_kind values
+            cn = data.get("company_number")
+
+            if resource_kind == "company-profile":
                 await upsert_company(conn, data)
 
-            elif resource_kind == "filing":
-                if company_number:
-                    await _ensure_company(pool, company_number)
+            elif resource_kind == "filing-history":
+                if cn:
+                    await _ensure_company(pool, cn)
                 await upsert_filing(conn, data)
 
-            elif resource_kind == "officer":
-                if company_number:
-                    await _ensure_company(pool, company_number)
+            elif resource_kind == "company-officers":
+                if cn:
+                    await _ensure_company(pool, cn)
                 await upsert_officer_appointment(conn, data)
 
-            elif resource_kind in ("persons-with-significant-control", "psc"):
-                if company_number:
-                    await _ensure_company(pool, company_number)
+            elif resource_kind.startswith("company-psc"):
+                if cn:
+                    await _ensure_company(pool, cn)
                 await upsert_psc(conn, data)
 
             else:

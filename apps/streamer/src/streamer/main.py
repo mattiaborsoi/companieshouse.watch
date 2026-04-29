@@ -95,7 +95,7 @@ async def consume_stream(
             bound_log.error(
                 "http_error",
                 status=exc.response.status_code,
-                body=exc.response.text[:200],
+                # response.text is unavailable in streaming context; use status only
             )
             await _sleep_unless_shutdown(BACKOFF_HTTP_ERROR, shutdown)
 
