@@ -30,7 +30,10 @@ export async function GET(req: NextRequest) {
         }
       };
 
-      // Send a heartbeat comment every 20s to keep the connection alive
+      // Flush headers immediately so the browser fires onopen right away
+      controller.enqueue(encoder.encode(": connected\n\n"));
+
+      // Send a heartbeat comment every 15s to keep the connection alive
       const heartbeat = setInterval(() => {
         if (closed) { clearInterval(heartbeat); return; }
         try {
@@ -39,7 +42,7 @@ export async function GET(req: NextRequest) {
           closed = true;
           clearInterval(heartbeat);
         }
-      }, 20_000);
+      }, 15_000);
 
       while (!closed) {
         try {

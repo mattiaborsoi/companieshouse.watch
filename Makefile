@@ -1,4 +1,5 @@
-COMPOSE = docker compose -f infra/docker/docker-compose.yml
+ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+COMPOSE = docker compose --env-file $(ROOT).env -f $(ROOT)infra/docker/docker-compose.yml
 
 # ── First-time setup ─────────────────────────────────────────────────────────
 

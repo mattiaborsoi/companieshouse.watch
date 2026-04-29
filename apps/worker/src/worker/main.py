@@ -7,11 +7,12 @@ and upserting the relevant entity into Postgres.
 import json
 import logging
 import re
+from datetime import datetime
 
 import asyncpg
 import structlog
+from arq import Retry
 from arq.connections import RedisSettings
-from arq.jobs import Retry
 
 from .ch_rest import get_company
 from .config import settings
@@ -68,7 +69,11 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
     resource_id = event.get("resource_id", "")
     # CH nests timepoint and published_at under event.event, not at top level
     event_meta = event.get("event") or {}
-    published_at = event_meta.get("published_at")
+    _pa = event_meta.get("published_at")
+    try:
+        published_at: datetime | None = datetime.fromisoformat(_pa) if _pa else None
+    except (ValueError, TypeError):
+        published_at = None
     timepoint = event_meta.get("timepoint")
     data = event.get("data") or {}
 
@@ -92,7 +97,7 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
                 INSERT INTO audit.events (
                     source, resource_kind, resource_id, resource_uri,
                     ch_timepoint, published_at, payload, received_at
-                ) VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, now()), $7::jsonb, now())
+                ) VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()), $7::jsonb, now())
                 ON CONFLICT DO NOTHING
                 RETURNING id
                 """,

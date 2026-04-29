@@ -224,7 +224,7 @@ export async function searchCompanies(query: string, limit = 20): Promise<Compan
       last_event_at
     FROM public.companies
     WHERE
-      name_normalised ILIKE ${"%" + query.toLowerCase() + "%"}
+      name ILIKE ${"%" + query + "%"}
       OR company_number = ${query.trim().toUpperCase()}
     ORDER BY
       CASE WHEN company_number = ${query.trim().toUpperCase()} THEN 0 ELSE 1 END,
@@ -232,6 +232,42 @@ export async function searchCompanies(query: string, limit = 20): Promise<Compan
       name
     LIMIT ${limit}
   `;
+}
+
+// Search Companies House REST API directly — used when local DB has no results
+export async function searchChRestApi(query: string): Promise<{
+  companyNumber: string;
+  title: string;
+  companyStatus: string;
+  companyType: string;
+  dateOfCreation: string | null;
+  addressSnippet: string | null;
+}[]> {
+  const key = process.env.CH_REST_KEY;
+  if (!key) return [];
+
+  const token = Buffer.from(`${key}:`).toString("base64");
+  try {
+    const res = await fetch(
+      `https://api.company-information.service.gov.uk/search/companies?q=${encodeURIComponent(query)}&items_per_page=10`,
+      {
+        headers: { Authorization: `Basic ${token}` },
+        next: { revalidate: 60 },
+      }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items ?? []).map((item: Record<string, unknown>) => ({
+      companyNumber: item.company_number as string,
+      title: item.title as string,
+      companyStatus: item.company_status as string ?? "unknown",
+      companyType: item.company_type as string ?? "unknown",
+      dateOfCreation: item.date_of_creation as string ?? null,
+      addressSnippet: item.address_snippet as string ?? null,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getStats(): Promise<{

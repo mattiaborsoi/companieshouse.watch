@@ -85,6 +85,7 @@ services:
       context: ../../apps/web
     environment:
       DATABASE_URL: postgresql://chwatch:chwatch@postgres:5432/chwatch
+      CH_REST_KEY: ${CH_REST_KEY}
       NODE_ENV: production
     ports:
       - "3030:3000"
