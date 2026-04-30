@@ -859,7 +859,6 @@ export function sicDescription(code: string): string {
 }
 
 export function formatFilingDescription(type: string, description: string | null | undefined): string {
-  if (description && description.trim()) return description;
   // Map common CH type slugs to human-readable labels
   const known: Record<string, string> = {
     "appointment-director":               "Director appointed",
@@ -898,8 +897,13 @@ export function formatFilingDescription(type: string, description: string | null
     "PSC01": "PSC notification",
     "PSC07": "PSC ceased",
   };
+  // Check type first (e.g. "CS01"), then description (CH REST returns slugs like "confirmation-statement-with-no-updates")
   if (known[type]) return known[type];
-  // Fall back to slug → readable conversion
+  const desc = description?.trim();
+  if (desc && known[desc]) return known[desc];
+  // If description looks human-readable (has spaces), use it directly
+  if (desc && desc.includes(" ")) return desc;
+  // Fall back to slug → readable conversion of type
   return type
     .replace(/[-_]/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
