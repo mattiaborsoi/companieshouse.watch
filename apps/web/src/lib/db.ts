@@ -177,6 +177,54 @@ export async function getCompanyIdentity(
   return rows[0] ?? null;
 }
 
+// Phase 4: press mentions (GDELT)
+// ──────────────────────────────────────────────────────────────────────
+
+export interface PressMention {
+  headline: string;
+  url: string;
+  sourceDomain: string;
+  publishedAt: Date;
+  language: string;
+}
+
+export async function getCompanyPress(
+  companyNumber: string,
+  limit = 5,
+): Promise<PressMention[]> {
+  return sql<PressMention[]>`
+    SELECT headline, url, source_domain, published_at, language
+    FROM public.company_press
+    WHERE company_number = ${companyNumber}
+    ORDER BY published_at DESC
+    LIMIT ${limit}
+  `;
+}
+
+export async function getCompanyPressCount(
+  companyNumber: string,
+): Promise<number> {
+  const rows = await sql<{ n: number }[]>`
+    SELECT COUNT(*)::int AS n FROM public.company_press
+    WHERE company_number = ${companyNumber}
+  `;
+  return rows[0]?.n ?? 0;
+}
+
+// Fire-and-forget: bump press search priority on profile view.
+export async function bumpPressResolutionPriority(
+  companyNumber: string,
+): Promise<void> {
+  await sql`
+    INSERT INTO public.company_press_resolutions
+      (company_number, last_searched_at, next_search_at, result_count, consecutive_empties)
+    VALUES (${companyNumber}, now(), now(), 0, 0)
+    ON CONFLICT (company_number) DO UPDATE SET
+      next_search_at = now()
+    WHERE public.company_press_resolutions.next_search_at > now()
+  `;
+}
+
 // Phase 3: filing-pattern badges
 // ──────────────────────────────────────────────────────────────────────
 

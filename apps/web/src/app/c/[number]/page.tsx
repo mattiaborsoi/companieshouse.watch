@@ -11,7 +11,10 @@ import {
   getCompanyIdentity,
   getDirectorContinuity,
   getCompanyPatterns,
+  getCompanyPress,
+  getCompanyPressCount,
   bumpIdentityResolutionPriority,
+  bumpPressResolutionPriority,
   getCompanyFromChRest,
   getOfficersFromChRest,
   getPscsFromChRest,
@@ -27,6 +30,7 @@ import {
   type CompanyIdentity,
   type DirectorContinuityRow,
   type CompanyPattern,
+  type PressMention,
 } from "@/lib/db";
 import {
   formatDate,
@@ -76,7 +80,7 @@ export default async function CompanyPage({ params }: Props) {
 
   if (localCompany) {
     const addrHash = localCompany.registeredAddressHash ?? undefined;
-    const [filings, officers, pscs, clusterAnomaly, identity, continuity, patterns] = await Promise.all([
+    const [filings, officers, pscs, clusterAnomaly, identity, continuity, patterns, press, pressCount] = await Promise.all([
       getCompanyFilings(cn),
       getCompanyOfficers(cn),
       getCompanyPscs(cn),
@@ -84,11 +88,16 @@ export default async function CompanyPage({ params }: Props) {
       getCompanyIdentity(cn),
       getDirectorContinuity(cn, 50),
       getCompanyPatterns(cn),
+      getCompanyPress(cn, 5),
+      getCompanyPressCount(cn),
     ]);
-    // For active companies without identity yet, prioritise resolution at
+    // For active companies without identity / press yet, prioritise resolution at
     // the next cron tick. Fire-and-forget; never blocks page render.
     if (!identity && localCompany.status === "active") {
       bumpIdentityResolutionPriority(cn).catch(() => {});
+    }
+    if (localCompany.status === "active") {
+      bumpPressResolutionPriority(cn).catch(() => {});
     }
     // Fallback to CH REST when local DB has no filings or officers yet
     const [restFilings, restOfficers] = await Promise.all([
@@ -108,6 +117,8 @@ export default async function CompanyPage({ params }: Props) {
         identity={identity}
         continuity={continuity}
         patterns={patterns}
+        press={press}
+        pressCount={pressCount}
       />
     );
   }
@@ -196,6 +207,8 @@ function CompanyProfile({
   identity = null,
   continuity = [],
   patterns = [],
+  press = [],
+  pressCount = 0,
 }: {
   company: AnyCompany;
   filings: Awaited<ReturnType<typeof getCompanyFilings>>;
@@ -209,6 +222,8 @@ function CompanyProfile({
   identity?: CompanyIdentity | null;
   continuity?: DirectorContinuityRow[];
   patterns?: CompanyPattern[];
+  press?: PressMention[];
+  pressCount?: number;
 }) {
   const addr = company.registeredAddress as Record<string, string>;
   const addressLines = [
@@ -338,6 +353,9 @@ function CompanyProfile({
       {/* Phase 3: filing pattern badges */}
       {patterns.length > 0 && <PatternBadgesSection patterns={patterns} />}
 
+      {/* Phase 4: press mentions */}
+      {press.length > 0 && <PressSection press={press} totalCount={pressCount} />}
+
       {/* Filing history */}
       <FilingsSection filings={filings} restFilings={restFilings} companyNumber={company.companyNumber} />
 
@@ -358,6 +376,42 @@ function CompanyProfile({
         <LocalPscsSection pscs={pscs} />
       )}
     </div>
+  );
+}
+
+// ─── Phase 4: press mentions ──────────────────────────────────
+
+function PressSection({ press, totalCount }: { press: PressMention[]; totalCount: number }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        In the news · {totalCount}
+      </h2>
+      <div className="rounded-md border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]"
+           style={{ boxShadow: "var(--panel-shadow)" }}>
+        {press.map((p) => (
+          <a
+            key={p.url}
+            href={p.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block px-4 py-3 hover:bg-[var(--bg-elevated)] transition-colors"
+          >
+            <p className="text-sm text-[var(--text-primary)] leading-snug line-clamp-2">{p.headline}</p>
+            <p className="mt-1 font-mono text-[10px] text-[var(--text-muted)] flex items-center gap-2">
+              <span>{p.sourceDomain}</span>
+              <span>·</span>
+              <span>{formatDate(p.publishedAt)}</span>
+              <span className="ml-auto text-[var(--accent)]/70">↗</span>
+            </p>
+          </a>
+        ))}
+      </div>
+      <p className="font-mono text-[10px] text-[var(--text-muted)] leading-relaxed">
+        Mentions sourced from the GDELT global news index. We don&apos;t curate or rank — links open the original article.
+        {totalCount > press.length && ` ${totalCount - press.length} older mention${totalCount - press.length === 1 ? "" : "s"} available.`}
+      </p>
+    </section>
   );
 }
 

@@ -22,6 +22,7 @@ from .officer_churn import detect_officer_churn
 from .bulk_registration import detect_bulk_registration
 from .identity_resolver import resolve_batch as resolve_identity_batch
 from .pattern_detector import detect_patterns
+from .press_resolver import resolve_press_batch
 from .social_poster import post_daily_anomaly
 from .ch_rest import get_company
 from .config import settings
@@ -211,6 +212,9 @@ class WorkerSettings:
         # Phase 3: filing-pattern badges — recompute nightly. Full pass over all
         # active companies is fine; the queries are aggregate and complete in seconds.
         cron(detect_patterns,          hour={3}, minute={0}),
+        # Phase 4: press mentions via GDELT. Free + unmetered but be polite —
+        # hourly tick × batch of 8 = 192/day.
+        cron(resolve_press_batch,      minute={47}),
         cron(post_daily_anomaly, hour={9}, minute={0}),
     ]
     on_startup = startup
