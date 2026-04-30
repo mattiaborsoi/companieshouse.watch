@@ -4,9 +4,20 @@
 
 A free, open-source, real-time view of the UK Companies House register — with automated anomaly detection and AI-generated plain-English explanations of suspicious patterns.
 
-Every filing, officer appointment, and ownership change as it streams from Companies House. Address clusters, director velocity, officer churn, and bulk-registration anomalies detected and scored automatically. AI summaries powered by Anthropic Claude.
-
 **Audience:** Journalists, OSINT researchers, fraud/compliance analysts, curious citizens.
+
+## Features
+
+- **Live feed** — every filing, officer appointment, and PSC change as it streams from Companies House, with category filters and pause
+- **Company profiles** — registered address, SIC codes with human-readable descriptions, full filing history (linked to CH viewer), officers, PSCs, and anomaly warnings
+- **Officer/person profiles** — appointment history, nationality, service address, and date of birth
+- **Search** — company name, number, officer/director name, or UK postcode; falls back to CH REST API when not yet in local database
+- **Anomaly detection** — four detectors running every 10 minutes, scored 0–100:
+  - Address clusters (many companies at one address)
+  - Director velocity (one person across many active companies)
+  - Officer churn (high appointment/resignation rate at one company)
+  - Bulk registration (many incorporations at one address on the same day)
+- **AI explanations** — on-demand plain-English summaries of flagged anomalies, powered by Anthropic Claude Haiku with hard spend caps
 
 > This project is in active development. See [Build Plan](BUILD_PLAN.md) for the roadmap.
 
