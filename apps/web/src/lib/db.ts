@@ -261,6 +261,49 @@ export async function searchOfficers(query: string, limit = 20): Promise<(Office
   `;
 }
 
+// Search Companies House REST API for officers — used when local DB returns no results
+export async function searchChRestOfficers(query: string): Promise<{
+  nameFull: string;
+  appointmentCount: number;
+  dateOfBirthYear: number | null;
+  dateOfBirthMonth: number | null;
+  nationality: string | null;
+  addressSnippet: string | null;
+  chSlug: string | null;
+}[]> {
+  const key = process.env.CH_REST_KEY;
+  if (!key) return [];
+  const token = Buffer.from(`${key}:`).toString("base64");
+  try {
+    const res = await fetch(
+      `https://api.company-information.service.gov.uk/search/officers?q=${encodeURIComponent(query)}&items_per_page=10`,
+      {
+        headers: { Authorization: `Basic ${token}` },
+        next: { revalidate: 60 },
+      }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items ?? []).map((item: Record<string, unknown>) => {
+      const dob = (item.date_of_birth as Record<string, number>) ?? {};
+      const links = (item.links as Record<string, string>) ?? {};
+      const selfLink = links.self ?? "";
+      const slugMatch = selfLink.match(/\/officers\/([^/]+)\//);
+      return {
+        nameFull: (item.title as string) ?? "Unknown",
+        appointmentCount: (item.appointment_count as number) ?? 0,
+        dateOfBirthYear: dob.year ?? null,
+        dateOfBirthMonth: dob.month ?? null,
+        nationality: null,
+        addressSnippet: (item.address_snippet as string) ?? null,
+        chSlug: slugMatch?.[1] ?? null,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // Search Companies House REST API directly — used when local DB has no results
 export async function searchChRestApi(query: string): Promise<{
   companyNumber: string;
@@ -438,6 +481,7 @@ export interface ChRestOfficerProfile {
   nameFull: string;
   nationality: string | null;
   occupation: string | null;
+  address: string | null;
   dateOfBirthYear: number | null;
   dateOfBirthMonth: number | null;
   appointments: ChRestAppointment[];
@@ -454,10 +498,20 @@ export async function getOfficerFromChRest(slug: string): Promise<ChRestOfficerP
     const first = d.items[0] as Record<string, unknown>;
     const name = (d.name as string) ?? (first.name as string) ?? "Unknown";
     const dob = (d.date_of_birth as Record<string, number>) ?? {};
+    // nationality/occupation may be top-level or per appointment item
+    const nationality = (d.nationality as string) ?? (first.nationality as string) ?? null;
+    const occupation = (d.occupation as string) ?? (first.occupation as string) ?? null;
+    // address: try top-level, then first appointment item
+    const rawAddr = (d.address as Record<string, string>) ?? (first.address as Record<string, string>) ?? null;
+    const address = rawAddr
+      ? [rawAddr.address_line_1, rawAddr.address_line_2, rawAddr.locality, rawAddr.region, rawAddr.postal_code, rawAddr.country]
+          .filter(Boolean).join(", ")
+      : null;
     return {
       nameFull: name,
-      nationality: (d.nationality as string) ?? null,
-      occupation: (d.occupation as string) ?? null,
+      nationality,
+      occupation,
+      address,
       dateOfBirthYear: dob.year ?? null,
       dateOfBirthMonth: dob.month ?? null,
       appointments: d.items.map((a: Record<string, unknown>) => {

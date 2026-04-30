@@ -26,6 +26,7 @@ import {
   filingCategoryLabel,
   filingCategoryColor,
   formatFilingDescription,
+  sicDescription,
 } from "@/lib/utils";
 
 interface Props {
@@ -210,11 +211,14 @@ function CompanyProfile({
 
         {company.sicCodes.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {company.sicCodes.map((sic: string) => (
-              <span key={sic} className="badge border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
-                SIC {sic}
-              </span>
-            ))}
+            {company.sicCodes.map((sic: string) => {
+              const desc = sicDescription(sic);
+              return (
+                <span key={sic} className="badge border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                  {sic}{desc ? ` · ${desc}` : ""}
+                </span>
+              );
+            })}
           </div>
         )}
 
@@ -231,7 +235,7 @@ function CompanyProfile({
       <div className="border-t border-[var(--border-subtle)]" />
 
       {/* Filing history */}
-      <FilingsSection filings={filings} restFilings={restFilings} />
+      <FilingsSection filings={filings} restFilings={restFilings} companyNumber={company.companyNumber} />
 
       {/* Officers — prefer local data; fall back to REST when local is empty */}
       {(fromRest || officers.length === 0) && restOfficers.length > 0 ? (
@@ -253,13 +257,42 @@ function CompanyProfile({
 function FilingsSection({
   filings,
   restFilings,
+  companyNumber,
 }: {
   filings: Awaited<ReturnType<typeof getCompanyFilings>>;
   restFilings: ChRestFiling[];
+  companyNumber: string;
 }) {
   const hasLocal = filings.length > 0;
   const hasRest = restFilings.length > 0;
   const count = hasLocal ? filings.length : restFilings.length;
+  const chBase = `https://find-and-update.company-information.service.gov.uk/company/${companyNumber}/filing-history`;
+
+  const FilingRow = ({ transactionId, category, type, description, filingDate }: {
+    transactionId: string; category: string; type: string;
+    description: string | null; filingDate: Date | string | null;
+  }) => (
+    <tr className="hover:bg-[var(--bg-elevated)] transition-colors">
+      <td>
+        <span className={`badge border ${filingCategoryColor(category)}`}>
+          {filingCategoryLabel(category)}
+        </span>
+      </td>
+      <td className="text-xs text-[var(--text-secondary)]">
+        <a
+          href={`${chBase}/${transactionId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-[var(--accent)] transition-colors"
+        >
+          {formatFilingDescription(type, description)} ↗
+        </a>
+      </td>
+      <td className="text-right font-mono text-xs text-[var(--text-muted)]">
+        {formatDate(filingDate)}
+      </td>
+    </tr>
+  );
 
   return (
     <section className="space-y-3">
@@ -284,33 +317,16 @@ function FilingsSection({
               </tr>
             </thead>
             <tbody>
-              {hasLocal
-                ? filings.map((f) => (
-                    <tr key={f.transactionId}>
-                      <td>
-                        <span className={`badge border ${filingCategoryColor(f.category)}`}>
-                          {filingCategoryLabel(f.category)}
-                        </span>
-                      </td>
-                      <td className="text-xs text-[var(--text-secondary)]">{formatFilingDescription(f.type, f.description)}</td>
-                      <td className="text-right font-mono text-xs text-[var(--text-muted)]">
-                        {formatDate(f.filingDate)}
-                      </td>
-                    </tr>
-                  ))
-                : restFilings.map((f) => (
-                    <tr key={f.transactionId}>
-                      <td>
-                        <span className={`badge border ${filingCategoryColor(f.category)}`}>
-                          {filingCategoryLabel(f.category)}
-                        </span>
-                      </td>
-                      <td className="text-xs text-[var(--text-secondary)]">{formatFilingDescription(f.type, f.description)}</td>
-                      <td className="text-right font-mono text-xs text-[var(--text-muted)]">
-                        {formatDate(f.filingDate)}
-                      </td>
-                    </tr>
-                  ))}
+              {(hasLocal ? filings : restFilings).map((f) => (
+                <FilingRow
+                  key={f.transactionId}
+                  transactionId={f.transactionId}
+                  category={f.category}
+                  type={f.type}
+                  description={f.description}
+                  filingDate={f.filingDate}
+                />
+              ))}
             </tbody>
           </table>
         </div>

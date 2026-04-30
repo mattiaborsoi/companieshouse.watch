@@ -64,6 +64,7 @@ function LocalOfficerProfile({
         occupation={officer.occupation}
         nationality={officer.nationality}
         countryOfResidence={officer.countryOfResidence}
+        address={null}
         dateOfBirthYear={officer.dateOfBirthYear}
         dateOfBirthMonth={officer.dateOfBirthMonth}
       />
@@ -106,6 +107,7 @@ function RestOfficerProfile({ profile }: { profile: ChRestOfficerProfile }) {
         occupation={profile.occupation}
         nationality={profile.nationality}
         countryOfResidence={null}
+        address={profile.address}
         dateOfBirthYear={profile.dateOfBirthYear}
         dateOfBirthMonth={profile.dateOfBirthMonth}
       />
@@ -122,6 +124,7 @@ function OfficerHeader({
   occupation,
   nationality,
   countryOfResidence,
+  address,
   dateOfBirthYear,
   dateOfBirthMonth,
 }: {
@@ -129,6 +132,7 @@ function OfficerHeader({
   occupation: string | null;
   nationality: string | null;
   countryOfResidence: string | null;
+  address: string | null;
   dateOfBirthYear: number | null;
   dateOfBirthMonth: number | null;
 }) {
@@ -140,6 +144,7 @@ function OfficerHeader({
         {occupation && <span>{occupation}</span>}
         {nationality && <span>{nationality}</span>}
         {countryOfResidence && <span>Resident: {countryOfResidence}</span>}
+        {address && <span>{address}</span>}
         {dateOfBirthYear && (
           <span>
             b.{" "}

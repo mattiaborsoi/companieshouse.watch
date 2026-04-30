@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { searchCompanies, searchChRestApi, searchOfficers, chSlugFromLink } from "@/lib/db";
+import { searchCompanies, searchChRestApi, searchOfficers, searchChRestOfficers, chSlugFromLink } from "@/lib/db";
 import SearchBox from "@/components/ui/SearchBox";
 import { companyStatusClass, formatDate } from "@/lib/utils";
 
@@ -21,6 +21,9 @@ export default async function SearchPage({ searchParams }: Props) {
   const activeTab = tab === "people" ? "people" : "companies";
   const statusFilter = status ?? "all";
 
+  // Detect UK postcode (full or partial) — force CH REST search for companies
+  const isPostcode = /^[A-Z]{1,2}[0-9][0-9A-Z]?(\s*[0-9][A-Z]{2})?$/i.test(query.trim());
+
   const [localResultsRaw, officerResults] = await Promise.all([
     query.length >= 2 ? searchCompanies(query) : Promise.resolve([]),
     query.length >= 2 && activeTab === "people" ? searchOfficers(query) : Promise.resolve([]),
@@ -30,9 +33,16 @@ export default async function SearchPage({ searchParams }: Props) {
     ? localResultsRaw
     : localResultsRaw.filter((c) => c.status.toLowerCase() === statusFilter);
 
+  // For postcodes always hit CH REST; otherwise only when no local results
   const remoteResults =
-    query.length >= 2 && activeTab === "companies" && localResultsRaw.length === 0
+    query.length >= 2 && activeTab === "companies" && (localResultsRaw.length === 0 || isPostcode)
       ? await searchChRestApi(query)
+      : [];
+
+  // People: CH REST fallback when local DB has no results
+  const remoteOfficers =
+    query.length >= 2 && activeTab === "people" && officerResults.length === 0
+      ? await searchChRestOfficers(query)
       : [];
 
   const tabLink = (t: string) => `/search?q=${encodeURIComponent(query)}&tab=${t}`;
@@ -172,24 +182,57 @@ export default async function SearchPage({ searchParams }: Props) {
       {/* People tab */}
       {activeTab === "people" && query.length >= 2 && (
         <>
-          {officerResults.length === 0 ? (
+          {officerResults.length === 0 && remoteOfficers.length === 0 && (
             <p className="text-sm text-[var(--text-secondary)]">
               No people found for <span className="text-[var(--text-primary)] font-medium">{query}</span>.
             </p>
-          ) : (
+          )}
+
+          {officerResults.length > 0 && (
             <div className="space-y-2">
               <p className="font-mono text-xs text-[var(--text-muted)] uppercase tracking-wide">
-                {officerResults.length} result{officerResults.length !== 1 ? "s" : ""}
+                {officerResults.length} result{officerResults.length !== 1 ? "s" : ""} · local database
               </p>
               {officerResults.map((o) => {
                 const slug = o.chOfficerLink ? chSlugFromLink(o.chOfficerLink) : null;
                 const href = `/officer/${slug ?? o.officerId}`;
                 return (
-                <Link
-                  key={o.officerId}
-                  href={href}
-                  className="block rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 hover:bg-[var(--bg-elevated)] hover:border-[var(--accent)] transition-all group"
-                >
+                  <Link
+                    key={o.officerId}
+                    href={href}
+                    className="block rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 hover:bg-[var(--bg-elevated)] hover:border-[var(--accent)] transition-all group"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
+                          {o.nameFull}
+                        </div>
+                        <div className="mt-0.5 font-mono text-xs text-[var(--text-muted)]">
+                          {o.appointmentCount} appointment{o.appointmentCount !== 1 ? "s" : ""}
+                          {o.nationality && ` · ${o.nationality}`}
+                          {o.occupation && ` · ${o.occupation}`}
+                        </div>
+                      </div>
+                      {o.dateOfBirthYear && (
+                        <span className="shrink-0 font-mono text-xs text-[var(--text-muted)]">
+                          b. {o.dateOfBirthYear}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
+          {remoteOfficers.length > 0 && (
+            <div className="space-y-2">
+              <div className="rounded-md border border-amber-900 bg-amber-950/50 px-4 py-2.5 text-xs text-amber-400 font-mono">
+                ↗ Not in local database — showing live results from Companies House.
+              </div>
+              {remoteOfficers.map((o, i) => {
+                const href = o.chSlug ? `/officer/${o.chSlug}` : null;
+                const card = (
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
@@ -197,8 +240,7 @@ export default async function SearchPage({ searchParams }: Props) {
                       </div>
                       <div className="mt-0.5 font-mono text-xs text-[var(--text-muted)]">
                         {o.appointmentCount} appointment{o.appointmentCount !== 1 ? "s" : ""}
-                        {o.nationality && ` · ${o.nationality}`}
-                        {o.occupation && ` · ${o.occupation}`}
+                        {o.addressSnippet && ` · ${o.addressSnippet}`}
                       </div>
                     </div>
                     {o.dateOfBirthYear && (
@@ -207,7 +249,22 @@ export default async function SearchPage({ searchParams }: Props) {
                       </span>
                     )}
                   </div>
-                </Link>
+                );
+                return href ? (
+                  <Link
+                    key={i}
+                    href={href}
+                    className="block rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 hover:bg-[var(--bg-elevated)] hover:border-[var(--accent)] transition-all group"
+                  >
+                    {card}
+                  </Link>
+                ) : (
+                  <div
+                    key={i}
+                    className="block rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4"
+                  >
+                    {card}
+                  </div>
                 );
               })}
             </div>
