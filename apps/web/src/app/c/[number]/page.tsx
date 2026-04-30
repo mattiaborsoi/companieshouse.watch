@@ -280,7 +280,7 @@ function FilingsSection({
       </td>
       <td className="text-xs text-[var(--text-secondary)]">
         <a
-          href={`${chBase}/${transactionId}`}
+          href={`${chBase}/${transactionId}/document?format=pdf&download=0`}
           target="_blank"
           rel="noopener noreferrer"
           className="hover:text-[var(--accent)] transition-colors"
