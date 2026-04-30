@@ -9,6 +9,7 @@ import {
   getCompanyOfficers,
   getCompanyPscs,
   getCompanyIdentity,
+  bumpIdentityResolutionPriority,
   getCompanyFromChRest,
   getOfficersFromChRest,
   getPscsFromChRest,
@@ -77,6 +78,11 @@ export default async function CompanyPage({ params }: Props) {
       addrHash ? getAnomalyForAddress(addrHash) : Promise.resolve(null),
       getCompanyIdentity(cn),
     ]);
+    // For active companies without identity yet, prioritise resolution at
+    // the next cron tick. Fire-and-forget; never blocks page render.
+    if (!identity && localCompany.status === "active") {
+      bumpIdentityResolutionPriority(cn).catch(() => {});
+    }
     // Fallback to CH REST when local DB has no filings or officers yet
     const [restFilings, restOfficers] = await Promise.all([
       filings.length === 0 ? getFilingsFromChRest(cn) : Promise.resolve([]),
@@ -198,10 +204,11 @@ function CompanyProfile({
           {identity?.faviconUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={identity.faviconUrl}
+              src={`/api/favicon/${company.companyNumber}`}
               alt=""
               width={32}
               height={32}
+              referrerPolicy="no-referrer"
               className="rounded mt-1 shrink-0 border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
             />
           )}
@@ -228,6 +235,12 @@ function CompanyProfile({
                 {identity.websiteDescription}
               </p>
             )}
+            <a
+              href={`mailto:takedowns@borsoi.co.uk?subject=${encodeURIComponent("Incorrect website for " + company.name + " (" + company.companyNumber + ")")}&body=${encodeURIComponent("I believe the website shown for " + company.name + " (" + identity.websiteUrl + ") is incorrect.\n\nThe correct website (if known) is:\n\nReason:\n")}`}
+              className="inline-block font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+            >
+              ↳ report incorrect website
+            </a>
           </div>
         )}
 

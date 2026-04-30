@@ -177,6 +177,25 @@ export async function getCompanyIdentity(
   return rows[0] ?? null;
 }
 
+// Fire-and-forget: when a profile page is viewed, ensure there's a row in
+// company_identity with next_check_at = now() so the resolver picks it up
+// at the next cron tick. Safe to call repeatedly — the WHERE clause keeps
+// us from clobbering rows that have been recently resolved.
+export async function bumpIdentityResolutionPriority(
+  companyNumber: string,
+): Promise<void> {
+  await sql`
+    INSERT INTO public.company_identity
+      (company_number, resolution_method, resolution_confidence,
+       resolved_at, next_check_at, failure_count)
+    VALUES (${companyNumber}, 'pending', 'none', now(), now(), 0)
+    ON CONFLICT (company_number) DO UPDATE SET
+      next_check_at = now()
+    WHERE public.company_identity.next_check_at > now()
+      AND NOT public.company_identity.override_locked
+  `;
+}
+
 export async function getCompanyFilings(
   companyNumber: string,
   limit = 50

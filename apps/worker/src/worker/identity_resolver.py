@@ -21,7 +21,7 @@ import asyncpg
 import structlog
 
 from . import brave_search
-from .http_fetcher import fetch_page
+from .http_fetcher import fetch_page, fetch_favicon
 
 log = structlog.get_logger()
 
@@ -265,6 +265,27 @@ async def resolve_company_identity(
         RETURNING *
     """, company_number, page.final_url, page.title, page.description,
         page.favicon_url, confidence, next_check_at)
+
+    # Try to cache the favicon bytes so we serve them from our own domain.
+    # Failure here doesn't affect the resolution — just means no favicon.
+    if page.favicon_url:
+        try:
+            fav = await fetch_favicon(page.favicon_url)
+            if fav:
+                await pool.execute("""
+                    INSERT INTO public.company_favicons
+                        (company_number, content_type, bytes, byte_length, source_url)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (company_number) DO UPDATE SET
+                        content_type = EXCLUDED.content_type,
+                        bytes        = EXCLUDED.bytes,
+                        byte_length  = EXCLUDED.byte_length,
+                        source_url   = EXCLUDED.source_url,
+                        fetched_at   = now()
+                """, company_number, fav.content_type, fav.bytes, len(fav.bytes), fav.url)
+                bound.info("favicon_cached", bytes=len(fav.bytes), content_type=fav.content_type)
+        except Exception as e:
+            bound.debug("favicon_cache_failed", error=str(e))
 
     bound.info(
         "identity_resolved",
