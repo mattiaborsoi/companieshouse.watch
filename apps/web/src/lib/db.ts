@@ -229,10 +229,6 @@ export async function getDirectorContinuity(
     FROM this_company_officers tco
     JOIN public.officers o2
       ON o2.person_match_key = tco.person_match_key
-    -- Note: o2 may be the same officer_id as tco (CH often issues one id per
-    -- person, so the same officer holds multiple appointments). The
-    -- c.company_number != ${companyNumber} filter excludes their appointment
-    -- at this company; we want their other appointments surfaced here too.
     JOIN public.appointments a
       ON a.officer_id = o2.officer_id
     JOIN public.companies c
