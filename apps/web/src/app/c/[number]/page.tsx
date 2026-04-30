@@ -10,6 +10,7 @@ import {
   getCompanyPscs,
   getCompanyIdentity,
   getDirectorContinuity,
+  getCompanyPatterns,
   bumpIdentityResolutionPriority,
   getCompanyFromChRest,
   getOfficersFromChRest,
@@ -24,6 +25,7 @@ import {
   type ChRestPsc,
   type CompanyIdentity,
   type DirectorContinuityRow,
+  type CompanyPattern,
 } from "@/lib/db";
 import {
   formatDate,
@@ -73,13 +75,14 @@ export default async function CompanyPage({ params }: Props) {
 
   if (localCompany) {
     const addrHash = localCompany.registeredAddressHash ?? undefined;
-    const [filings, officers, pscs, clusterAnomaly, identity, continuity] = await Promise.all([
+    const [filings, officers, pscs, clusterAnomaly, identity, continuity, patterns] = await Promise.all([
       getCompanyFilings(cn),
       getCompanyOfficers(cn),
       getCompanyPscs(cn),
       addrHash ? getAnomalyForAddress(addrHash) : Promise.resolve(null),
       getCompanyIdentity(cn),
       getDirectorContinuity(cn, 50),
+      getCompanyPatterns(cn),
     ]);
     // For active companies without identity yet, prioritise resolution at
     // the next cron tick. Fire-and-forget; never blocks page render.
@@ -103,6 +106,7 @@ export default async function CompanyPage({ params }: Props) {
         clusterAnomaly={clusterAnomaly}
         identity={identity}
         continuity={continuity}
+        patterns={patterns}
       />
     );
   }
@@ -149,6 +153,7 @@ function CompanyProfile({
   clusterAnomaly = null,
   identity = null,
   continuity = [],
+  patterns = [],
 }: {
   company: AnyCompany;
   filings: Awaited<ReturnType<typeof getCompanyFilings>>;
@@ -161,6 +166,7 @@ function CompanyProfile({
   clusterAnomaly?: { id: string; score: number } | null;
   identity?: CompanyIdentity | null;
   continuity?: DirectorContinuityRow[];
+  patterns?: CompanyPattern[];
 }) {
   const addr = company.registeredAddress as Record<string, string>;
   const addressLines = [
@@ -287,6 +293,9 @@ function CompanyProfile({
 
       <div className="border-t border-[var(--border-subtle)]" />
 
+      {/* Phase 3: filing pattern badges */}
+      {patterns.length > 0 && <PatternBadgesSection patterns={patterns} />}
+
       {/* Filing history */}
       <FilingsSection filings={filings} restFilings={restFilings} companyNumber={company.companyNumber} />
 
@@ -307,6 +316,63 @@ function CompanyProfile({
         <LocalPscsSection pscs={pscs} />
       )}
     </div>
+  );
+}
+
+// ─── Phase 3: filing-pattern badges ──────────────────────────────────
+
+const PATTERN_COLOURS: Record<string, string> = {
+  // Neutral / informational
+  recently_incorporated:    "bg-blue-950/60 text-blue-300 border-blue-800",
+  switched_from_dormant:    "bg-blue-950/60 text-blue-300 border-blue-800",
+  reactivation:             "bg-blue-950/60 text-blue-300 border-blue-800",
+  // Things worth a second look (amber)
+  first_filing_after_gap:   "bg-amber-950/60 text-amber-300 border-amber-800",
+  switched_to_dormant:      "bg-amber-950/60 text-amber-300 border-amber-800",
+  long_dormant:             "bg-zinc-900 text-zinc-400 border-zinc-700",
+  outstanding_charge:       "bg-amber-950/60 text-amber-300 border-amber-800",
+  // Activity-based (orange)
+  address_churn:            "bg-orange-950/60 text-orange-300 border-orange-800",
+  director_churn:           "bg-orange-950/60 text-orange-300 border-orange-800",
+  director_velocity:        "bg-orange-950/60 text-orange-300 border-orange-800",
+};
+
+function PatternBadgesSection({ patterns }: { patterns: CompanyPattern[] }) {
+  // Deduplicate: 'reactivation' and 'switched_from_dormant' have the same SQL,
+  // so suppress one of them on the page.
+  const seen = new Set<string>();
+  const unique = patterns.filter((p) => {
+    if (p.patternKind === "reactivation" && seen.has("switched_from_dormant")) return false;
+    if (p.patternKind === "switched_from_dormant" && seen.has("reactivation")) return false;
+    seen.add(p.patternKind);
+    return true;
+  });
+  if (unique.length === 0) return null;
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Patterns · {unique.length}
+        </h2>
+        <Link href="/methodology" className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
+          How are these computed? →
+        </Link>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {unique.map((p) => (
+          <span
+            key={p.patternKind}
+            className={`badge border font-mono text-[10px] ${PATTERN_COLOURS[p.patternKind] ?? "bg-zinc-900 text-zinc-300 border-zinc-700"}`}
+            title={Object.entries(p.detail)
+              .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+              .join("\n")}
+          >
+            {p.patternLabel}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 

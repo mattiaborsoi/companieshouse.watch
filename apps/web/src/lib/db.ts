@@ -177,6 +177,28 @@ export async function getCompanyIdentity(
   return rows[0] ?? null;
 }
 
+// Phase 3: filing-pattern badges
+// ──────────────────────────────────────────────────────────────────────
+
+export interface CompanyPattern {
+  patternKind: string;
+  patternLabel: string;
+  detail: Record<string, unknown>;
+  detectedAt: Date;
+}
+
+export async function getCompanyPatterns(
+  companyNumber: string,
+): Promise<CompanyPattern[]> {
+  return sql<CompanyPattern[]>`
+    SELECT pattern_kind, pattern_label, detail, detected_at
+    FROM public.company_patterns
+    WHERE company_number = ${companyNumber}
+      AND is_currently_active = true
+    ORDER BY detected_at DESC
+  `;
+}
+
 // Phase 2: director continuity ("Directors also run")
 // ──────────────────────────────────────────────────────────────────────
 //

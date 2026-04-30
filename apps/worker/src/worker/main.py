@@ -21,6 +21,7 @@ from .director_velocity import detect_director_velocity
 from .officer_churn import detect_officer_churn
 from .bulk_registration import detect_bulk_registration
 from .identity_resolver import resolve_batch as resolve_identity_batch
+from .pattern_detector import detect_patterns
 from .social_poster import post_daily_anomaly
 from .ch_rest import get_company
 from .config import settings
@@ -207,6 +208,9 @@ class WorkerSettings:
         # Hourly tick (24/day) * batch of 2 = 48 Brave calls/day = ~1440/month, leaving
         # ~28% headroom for retries/failures.
         cron(resolve_identity_batch,   minute={37}),
+        # Phase 3: filing-pattern badges — recompute nightly. Full pass over all
+        # active companies is fine; the queries are aggregate and complete in seconds.
+        cron(detect_patterns,          hour={3}, minute={0}),
         cron(post_daily_anomaly, hour={9}, minute={0}),
     ]
     on_startup = startup
