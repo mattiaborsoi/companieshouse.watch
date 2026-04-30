@@ -87,6 +87,28 @@ export default function AboutPage() {
               many newly-created companies in a short window.
             </p>
           </div>
+
+          <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)] p-4 space-y-2">
+            <p className="text-xs font-mono font-semibold uppercase tracking-wider text-[var(--accent)]">Officer churn</p>
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+              A company with an unusually high rate of officer appointments and resignations
+              within a 90-day window. Sustained churn — particularly where terminations
+              outnumber appointments — can indicate instability, nominee cycling, or a
+              phoenix-style pattern where control is rapidly transferred. Legitimate
+              restructuring can produce similar numbers.
+            </p>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-[var(--bg-surface)] p-4 space-y-2">
+            <p className="text-xs font-mono font-semibold uppercase tracking-wider text-[var(--accent)]">Bulk registration</p>
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+              Ten or more companies were incorporated at the same registered address on the
+              same calendar day. This is the defining signature of formation-agent activity
+              and coordinated shell company creation. Registered-office service providers
+              handling legitimate client registrations can trigger this pattern — but so
+              can addresses used for mass nominee incorporation.
+            </p>
+          </div>
         </div>
 
         <p className="text-xs text-[var(--text-muted)] leading-relaxed">

@@ -49,6 +49,8 @@ export default async function AnomaliesPage() {
   const KIND_LABEL: Record<string, string> = {
     address_cluster:    "Address cluster",
     director_velocity:  "Director velocity",
+    officer_churn:      "Officer churn",
+    bulk_registration:  "Bulk registration",
   };
 
   return (
@@ -60,9 +62,9 @@ export default async function AnomaliesPage() {
           {anomalies.length} active anomalies
         </h1>
         <p className="text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
-          Automatically detected patterns: address clusters (many companies at one address)
-          and director velocity (one person appointed across many companies rapidly).
-          Scored 0–100, updated every 10 minutes.
+          Automatically detected patterns: address clusters, director velocity, officer churn,
+          and bulk registration events. Scored 0–100 and updated every 10 minutes.
+          High scores indicate an unusual pattern — not wrongdoing.
         </p>
       </div>
 

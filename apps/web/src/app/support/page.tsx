@@ -4,14 +4,14 @@ import Link from "next/link";
 export const metadata: Metadata = { title: "Support the project" };
 
 const COSTS = [
-  { item: "Server (VPS + Postgres)",  monthly: "~£25",  note: "Hetzner CX21 + managed DB" },
-  { item: "Anthropic API (AI)",        monthly: "~£15",  note: "Capped at £100/mo hard limit" },
-  { item: "Domain + CDN",             monthly: "~£3",   note: "companieshouse.watch via Cloudflare" },
-  { item: "Monitoring + backups",      monthly: "~£5",   note: "Healthchecks.io + nightly dump" },
-  { item: "Developer time",           monthly: "∞",     note: "Nights and weekends, purely volunteer" },
+  { item: "Server (DigitalOcean droplet)", monthly: "~£18",  note: "2 vCPU / 2 GB RAM / 50 GB SSD, London region" },
+  { item: "Anthropic API (AI)",            monthly: "~£15",  note: "Capped at £100/mo hard limit" },
+  { item: "Domain + CDN",                 monthly: "~£3",   note: "ch.borsoi.co.uk via Cloudflare" },
+  { item: "Monitoring + backups",          monthly: "~£5",   note: "Healthchecks.io + nightly dump" },
+  { item: "Developer time",               monthly: "∞",     note: "Nights and weekends, purely volunteer" },
 ];
 
-const TOTAL_MONTHLY = "~£48";
+const TOTAL_MONTHLY = "~£41";
 
 export default function SupportPage() {
   return (
@@ -76,7 +76,7 @@ export default function SupportPage() {
       <section className="space-y-4">
         <h2 className="section-label">How to help</h2>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
 
           {/* GitHub Sponsors */}
           <a
@@ -94,25 +94,6 @@ export default function SupportPage() {
             </p>
             <div className="font-mono text-xs text-[var(--accent)] group-hover:underline underline-offset-2">
               github.com/sponsors/mattiaborsoi →
-            </div>
-          </a>
-
-          {/* Buy Me a Coffee */}
-          <a
-            href="https://buymeacoffee.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="panel p-5 space-y-3 hover:border-[var(--border-bright)] transition-colors group block"
-          >
-            <div className="font-mono text-xs uppercase tracking-widest text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors">
-              One-off
-            </div>
-            <div className="font-mono text-lg font-bold text-[var(--text-primary)]">Buy Me a Coffee</div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              A one-time contribution. Covers an hour of server costs and is genuinely appreciated.
-            </p>
-            <div className="font-mono text-xs text-[var(--accent)] group-hover:underline underline-offset-2">
-              buymeacoffee.com →
             </div>
           </a>
 

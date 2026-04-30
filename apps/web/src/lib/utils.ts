@@ -52,6 +52,37 @@ export function filingCategoryLabel(category: string): string {
   return labels[category] ?? category;
 }
 
+export function formatFilingDescription(type: string, description: string | null | undefined): string {
+  if (description && description.trim()) return description;
+  // Map common CH type slugs to human-readable labels
+  const known: Record<string, string> = {
+    "appointment-director":               "Director appointed",
+    "termination-director":               "Director terminated",
+    "appointment-secretary":              "Secretary appointed",
+    "termination-secretary":              "Secretary terminated",
+    "change-person-director-company-with-change-date": "Director details changed",
+    "change-person-secretary-company-with-change-date": "Secretary details changed",
+    "AA":   "Annual accounts",
+    "AA01": "Dormant company accounts",
+    "AA02": "Micro-entity accounts",
+    "CS01": "Confirmation statement",
+    "TM01": "Termination of director",
+    "AP01": "Appointment of director",
+    "CH01": "Director details changed",
+    "MR01": "Charge created",
+    "MR04": "Charge satisfied",
+    "DS01": "Dissolution application",
+    "AD01": "Registered office changed",
+    "PSC01": "PSC notification",
+    "PSC07": "PSC ceased",
+  };
+  if (known[type]) return known[type];
+  // Fall back to slug → readable conversion
+  return type
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 // Bold, high-contrast category colors
 export function filingCategoryColor(category: string): string {
   const colors: Record<string, string> = {

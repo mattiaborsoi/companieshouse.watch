@@ -38,7 +38,10 @@ Full spec is in `docs/BUILD_PLAN.md` (architecture, phases, AI policy) and `docs
 ### Phase 3 — Anomaly detection + LLM gateway (complete)
 - `apps/llm-gateway/` — FastAPI service: input-hash cache → Redis spend caps → Anthropic Haiku → `ai_summaries` + `audit.llm_calls`. Hard caps: £5/day, £100/month.
 - `apps/worker/src/worker/anomaly_detector.py` — arq cron every 10 min, SQL address clustering, scores 0–100, upserts `public.anomalies`. No LLM calls — AI is on-demand only.
-- `apps/web/src/app/anomalies/` — list page (scored clusters) + detail page (`/anomalies/[id]`) with company table, shared directors, and "Generate AI explanation" button.
+- `apps/worker/src/worker/director_velocity.py` — arq cron, flags officers with many active appointments; kind=`director_velocity`.
+- `apps/worker/src/worker/officer_churn.py` — arq cron, flags companies with high officer appointment/resignation rate in 90 days; kind=`officer_churn`.
+- `apps/worker/src/worker/bulk_registration.py` — arq cron, flags addresses with 10+ incorporations on the same day; kind=`bulk_registration`.
+- `apps/web/src/app/anomalies/` — list page (scored clusters) + detail page (`/anomalies/[id]`) with company table, shared directors, and "Generate AI explanation" button. Handles all four anomaly kinds.
 - `apps/web/src/app/api/anomalies/[id]/explain/` — Next.js API route that proxies to llm-gateway.
 
 ### Not yet built

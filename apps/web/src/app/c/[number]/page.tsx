@@ -25,6 +25,7 @@ import {
   companyStatusClass,
   filingCategoryLabel,
   filingCategoryColor,
+  formatFilingDescription,
 } from "@/lib/utils";
 
 interface Props {
@@ -291,7 +292,7 @@ function FilingsSection({
                           {filingCategoryLabel(f.category)}
                         </span>
                       </td>
-                      <td className="text-xs text-[var(--text-secondary)]">{f.description || f.type}</td>
+                      <td className="text-xs text-[var(--text-secondary)]">{formatFilingDescription(f.type, f.description)}</td>
                       <td className="text-right font-mono text-xs text-[var(--text-muted)]">
                         {formatDate(f.filingDate)}
                       </td>
@@ -304,7 +305,7 @@ function FilingsSection({
                           {filingCategoryLabel(f.category)}
                         </span>
                       </td>
-                      <td className="text-xs text-[var(--text-secondary)]">{f.description || f.type}</td>
+                      <td className="text-xs text-[var(--text-secondary)]">{formatFilingDescription(f.type, f.description)}</td>
                       <td className="text-right font-mono text-xs text-[var(--text-muted)]">
                         {formatDate(f.filingDate)}
                       </td>

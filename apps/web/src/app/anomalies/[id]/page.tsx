@@ -16,6 +16,14 @@ export async function generateMetadata(
   if (anomaly.kind === "director_velocity") {
     return { title: `Director: ${anomaly.features.officer_name ?? id}` };
   }
+  if (anomaly.kind === "officer_churn") {
+    return { title: `Officer churn: ${anomaly.features.company_name ?? id}` };
+  }
+  if (anomaly.kind === "bulk_registration") {
+    const f = anomaly.features;
+    const addr = [f.address_line_1, f.postcode].filter(Boolean).join(", ");
+    return { title: `Bulk registration: ${addr || id}` };
+  }
   const f = anomaly.features;
   const addr = [f.address_line_1, f.locality, f.postcode].filter(Boolean).join(", ");
   return { title: `Cluster: ${addr || id}` };
@@ -280,6 +288,203 @@ function DirectorVelocityDetail({ anomaly }: { anomaly: Awaited<ReturnType<typeo
   );
 }
 
+// ─── Officer churn detail ──────────────────────────────────
+
+function OfficerChurnDetail({ anomaly }: { anomaly: Awaited<ReturnType<typeof getAnomaly>> }) {
+  if (!anomaly) return null;
+  const f = anomaly.features;
+
+  return (
+    <>
+      <div className="space-y-3">
+        <p className="section-label">Officer churn</p>
+        <h1 className="font-mono text-2xl font-bold text-[var(--text-primary)] leading-snug">
+          {f.company_name ?? anomaly.detectionKey}
+        </h1>
+        <div className="flex flex-wrap gap-6 font-mono text-xs text-[var(--text-muted)]">
+          <span>First detected: <span className="text-[var(--text-secondary)]">{formatDate(anomaly.firstDetectedAt)}</span></span>
+          <span>Last confirmed: <span className="text-[var(--text-secondary)]">{formatDate(anomaly.lastDetectedAt)}</span></span>
+        </div>
+      </div>
+
+      <div className="panel p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="section-label">Anomaly score</span>
+          <span className="font-mono text-[10px] text-[var(--text-muted)]">0 – 100</span>
+        </div>
+        <ScoreBar score={anomaly.score} />
+        <div className="grid grid-cols-3 gap-4 pt-2 border-t border-[var(--border-subtle)]">
+          <div>
+            <div className="font-mono text-2xl font-bold text-[var(--accent)] tabular-nums">{f.total_churn}</div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Total churn</div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl font-bold text-[var(--text-primary)] tabular-nums">{f.appointments_90d ?? 0}</div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Appointed</div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl font-bold text-[var(--text-primary)] tabular-nums">{f.terminations_90d ?? 0}</div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Resigned</div>
+          </div>
+        </div>
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="section-label">AI explanation</h2>
+        {anomaly.aiSummaryOutput ? (
+          <div className="panel p-4 space-y-2">
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{anomaly.aiSummaryOutput}</p>
+            <p className="font-mono text-[10px] text-[var(--text-muted)]">
+              AI-generated · Claude Haiku
+              {anomaly.aiSummaryGeneratedAt ? ` · ${formatDate(anomaly.aiSummaryGeneratedAt)}` : ""}.
+              Factual summary only — no legal conclusions.
+            </p>
+          </div>
+        ) : (
+          <ExplainButton anomalyId={anomaly.id} />
+        )}
+      </section>
+
+      <div>
+        <Link href={`/c/${anomaly.detectionKey}`} className="btn-ghost text-xs">
+          View company profile →
+        </Link>
+      </div>
+
+      {f.officers && f.officers.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="section-label">Officers active in this period</h2>
+          <div className="panel overflow-hidden">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th className="hidden sm:table-cell text-right">Appointed</th>
+                  <th className="text-right">Resigned</th>
+                </tr>
+              </thead>
+              <tbody>
+                {f.officers.map((o: { officer_id: string; name: string; role: string; appointed_on: string | null; resigned_on: string | null }) => (
+                  <tr key={o.officer_id}>
+                    <td>
+                      <Link href={`/officer/${o.officer_id}`}
+                        className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors">
+                        {o.name}
+                      </Link>
+                    </td>
+                    <td className="font-mono text-xs text-[var(--text-muted)]">{o.role ?? "—"}</td>
+                    <td className="hidden sm:table-cell text-right font-mono text-xs text-[var(--text-muted)]">
+                      {o.appointed_on ? formatDate(o.appointed_on) : "—"}
+                    </td>
+                    <td className="text-right font-mono text-xs text-[var(--text-muted)]">
+                      {o.resigned_on ? formatDate(o.resigned_on) : <span className="text-green-400">Active</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+// ─── Bulk registration detail ──────────────────────────────
+
+function BulkRegistrationDetail({ anomaly }: { anomaly: Awaited<ReturnType<typeof getAnomaly>> }) {
+  if (!anomaly) return null;
+  const f = anomaly.features;
+  const addressParts = [f.address_line_1, f.locality, f.postcode].filter(Boolean);
+  const address = addressParts.join(", ") || "Unknown address";
+
+  return (
+    <>
+      <div className="space-y-3">
+        <p className="section-label">Bulk registration</p>
+        <h1 className="font-mono text-2xl font-bold text-[var(--text-primary)] leading-snug">
+          {address}
+        </h1>
+        <div className="flex flex-wrap gap-6 font-mono text-xs text-[var(--text-muted)]">
+          <span>Registration date: <span className="text-[var(--text-secondary)]">{f.inc_date ? formatDate(f.inc_date) : "—"}</span></span>
+          <span>First detected: <span className="text-[var(--text-secondary)]">{formatDate(anomaly.firstDetectedAt)}</span></span>
+        </div>
+      </div>
+
+      <div className="panel p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="section-label">Anomaly score</span>
+          <span className="font-mono text-[10px] text-[var(--text-muted)]">0 – 100</span>
+        </div>
+        <ScoreBar score={anomaly.score} />
+        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-[var(--border-subtle)]">
+          <div>
+            <div className="font-mono text-2xl font-bold text-[var(--accent)] tabular-nums">{f.companies_on_day}</div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Companies in one day</div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl font-bold text-[var(--text-primary)] tabular-nums">
+              {f.inc_date ? formatDate(f.inc_date) : "—"}
+            </div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Registration date</div>
+          </div>
+        </div>
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="section-label">AI explanation</h2>
+        {anomaly.aiSummaryOutput ? (
+          <div className="panel p-4 space-y-2">
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{anomaly.aiSummaryOutput}</p>
+            <p className="font-mono text-[10px] text-[var(--text-muted)]">
+              AI-generated · Claude Haiku
+              {anomaly.aiSummaryGeneratedAt ? ` · ${formatDate(anomaly.aiSummaryGeneratedAt)}` : ""}.
+              Factual summary only — no legal conclusions.
+            </p>
+          </div>
+        ) : (
+          <ExplainButton anomalyId={anomaly.id} />
+        )}
+      </section>
+
+      {f.companies && f.companies.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="section-label">{f.companies.length} companies incorporated this day</h2>
+          <div className="panel overflow-hidden">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Status</th>
+                  <th className="text-right hidden sm:table-cell">Incorporated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {f.companies.map((c: { number: string; name: string; status: string; incorporated_on: string | null }) => (
+                  <tr key={c.number}>
+                    <td>
+                      <Link href={`/c/${c.number}`}
+                        className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors">
+                        {c.name}
+                      </Link>
+                      <div className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5">{c.number}</div>
+                    </td>
+                    <td><StatusBadge status={c.status} /></td>
+                    <td className="text-right font-mono text-xs text-[var(--text-muted)] hidden sm:table-cell">
+                      {c.incorporated_on ? formatDate(c.incorporated_on) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────
 
 export default async function AnomalyPage(
@@ -294,7 +499,11 @@ export default async function AnomalyPage(
       <Link href="/anomalies" className="btn-ghost text-xs">← All anomalies</Link>
       {anomaly.kind === "director_velocity"
         ? <DirectorVelocityDetail anomaly={anomaly} />
-        : <AddressClusterDetail anomaly={anomaly} />
+        : anomaly.kind === "officer_churn"
+          ? <OfficerChurnDetail anomaly={anomaly} />
+          : anomaly.kind === "bulk_registration"
+            ? <BulkRegistrationDetail anomaly={anomaly} />
+            : <AddressClusterDetail anomaly={anomaly} />
       }
     </div>
   );
