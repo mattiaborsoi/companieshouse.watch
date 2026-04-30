@@ -573,11 +573,22 @@ export interface ChRestPsc {
   isAnonymised: boolean;
 }
 
+// Thrown when CH REST returns 429 — distinguishes "rate-limited, try later"
+// from "not found". Pages should catch and render a friendly fallback
+// instead of a 404.
+export class ChRestRateLimitError extends Error {
+  constructor() {
+    super("Companies House REST API rate-limited");
+    this.name = "ChRestRateLimitError";
+  }
+}
+
 export async function getCompanyFromChRest(companyNumber: string): Promise<ChRestCompany | null> {
   const client = chRestClient();
   if (!client) return null;
   try {
     const res = await client(`/company/${companyNumber}`);
+    if (res.status === 429) throw new ChRestRateLimitError();
     if (!res.ok) return null;
     const d = await res.json();
     const addr = d.registered_office_address ?? {};
@@ -592,7 +603,8 @@ export async function getCompanyFromChRest(companyNumber: string): Promise<ChRes
       sicCodes: d.sic_codes ?? [],
       fromRest: true,
     };
-  } catch {
+  } catch (e) {
+    if (e instanceof ChRestRateLimitError) throw e;
     return null;
   }
 }

@@ -18,6 +18,7 @@ import {
   getFilingsFromChRest,
   getAnomalyForAddress,
   chSlugFromLink,
+  ChRestRateLimitError,
   type Company,
   type ChRestCompany,
   type ChRestFiling,
@@ -112,15 +113,26 @@ export default async function CompanyPage({ params }: Props) {
   }
 
   // Not in local DB — fetch live from CH REST
-  const [restCompany, restOfficers, restPscs] = await Promise.all([
-    getCompanyFromChRest(cn),
-    getOfficersFromChRest(cn),
-    getPscsFromChRest(cn),
-  ]);
+  let restCompany: Awaited<ReturnType<typeof getCompanyFromChRest>>;
+  let restOfficers: Awaited<ReturnType<typeof getOfficersFromChRest>>;
+  let restPscs: Awaited<ReturnType<typeof getPscsFromChRest>>;
+  try {
+    [restCompany, restOfficers, restPscs] = await Promise.all([
+      getCompanyFromChRest(cn),
+      // Officers/PSCs failure isn't fatal; show empty if they fail.
+      getOfficersFromChRest(cn).catch(() => []),
+      getPscsFromChRest(cn).catch(() => []),
+    ]);
+  } catch (e) {
+    if (e instanceof ChRestRateLimitError) {
+      return <RateLimitedFallback companyNumber={cn} />;
+    }
+    throw e;
+  }
 
   if (!restCompany) notFound();
 
-  const restFilings = await getFilingsFromChRest(cn);
+  const restFilings = await getFilingsFromChRest(cn).catch(() => []);
   return (
     <CompanyProfile
       company={restCompany}
@@ -132,6 +144,36 @@ export default async function CompanyPage({ params }: Props) {
       restPscs={restPscs}
       fromRest={true}
     />
+  );
+}
+
+// Shown when the company isn't in our local DB AND Companies House is
+// currently rate-limiting us. Better than a 404, which would imply the
+// company doesn't exist.
+function RateLimitedFallback({ companyNumber }: { companyNumber: string }) {
+  return (
+    <div className="mx-auto max-w-xl px-4 py-16 space-y-5 text-center">
+      <p className="section-label mx-auto">Companies House rate-limited</p>
+      <h1 className="font-mono text-2xl font-bold text-[var(--text-primary)]">
+        Couldn&apos;t reach Companies House right now
+      </h1>
+      <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+        Company <span className="font-mono text-[var(--text-primary)]">{companyNumber}</span>{" "}
+        isn&apos;t in our local database yet, and the Companies House API has temporarily
+        rate-limited us. The page will work in a moment — please refresh.
+      </p>
+      <div className="pt-2 flex flex-wrap justify-center gap-3">
+        <a
+          href={`https://find-and-update.company-information.service.gov.uk/company/${companyNumber}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost text-xs"
+        >
+          View on Companies House ↗
+        </a>
+        <Link href="/" className="btn-ghost text-xs">← Home</Link>
+      </div>
+    </div>
   );
 }
 
