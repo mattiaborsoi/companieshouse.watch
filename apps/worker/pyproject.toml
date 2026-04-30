@@ -9,6 +9,7 @@ dependencies = [
     "redis[asyncio]>=5.0",
     "pydantic-settings>=2.4",
     "structlog>=24.0",
+    "selectolax>=0.3.21",
 ]
 
 [build-system]

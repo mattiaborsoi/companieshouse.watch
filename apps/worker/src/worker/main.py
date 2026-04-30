@@ -20,6 +20,7 @@ from .anomaly_detector import detect_anomalies
 from .director_velocity import detect_director_velocity
 from .officer_churn import detect_officer_churn
 from .bulk_registration import detect_bulk_registration
+from .identity_resolver import resolve_batch as resolve_identity_batch
 from .social_poster import post_daily_anomaly
 from .ch_rest import get_company
 from .config import settings
@@ -202,6 +203,10 @@ class WorkerSettings:
         cron(detect_director_velocity, minute={5, 15, 25, 35, 45, 55}),
         cron(detect_officer_churn,    minute={2, 12, 22, 32, 42, 52}),
         cron(detect_bulk_registration, minute={7, 17, 27, 37, 47, 57}),
+        # Phase 1: company identity — Brave free tier = 2000/month = ~67/day budget.
+        # Hourly tick (24/day) * batch of 2 = 48 Brave calls/day = ~1440/month, leaving
+        # ~28% headroom for retries/failures.
+        cron(resolve_identity_batch,   minute={37}),
         cron(post_daily_anomaly, hour={9}, minute={0}),
     ]
     on_startup = startup

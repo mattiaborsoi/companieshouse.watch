@@ -8,6 +8,7 @@ const COSTS = [
   { item: "Anthropic API (AI)",            monthly: "~£15",  note: "Capped at £100/mo hard limit" },
   { item: "Domain + CDN",                 monthly: "~£3",   note: "ch.borsoi.co.uk via Cloudflare" },
   { item: "Monitoring + backups",          monthly: "~£5",   note: "Healthchecks.io + nightly dump" },
+  { item: "Brave Search API",              monthly: "£0",    note: "Free tier — 2000 queries/mo for company website resolution" },
   { item: "Developer time",               monthly: "∞",     note: "Nights and weekends, purely volunteer" },
 ];
 

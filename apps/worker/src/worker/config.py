@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     bluesky_app_password: str = ""
     site_url: str = "https://companieshouse.watch"
 
+    # Phase 1: company identity resolution (optional — skip if not set)
+    brave_search_api_key: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

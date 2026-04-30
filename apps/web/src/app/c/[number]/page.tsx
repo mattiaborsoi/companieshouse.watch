@@ -8,6 +8,7 @@ import {
   getCompanyFilings,
   getCompanyOfficers,
   getCompanyPscs,
+  getCompanyIdentity,
   getCompanyFromChRest,
   getOfficersFromChRest,
   getPscsFromChRest,
@@ -19,6 +20,7 @@ import {
   type ChRestFiling,
   type ChRestOfficer,
   type ChRestPsc,
+  type CompanyIdentity,
 } from "@/lib/db";
 import {
   formatDate,
@@ -68,11 +70,12 @@ export default async function CompanyPage({ params }: Props) {
 
   if (localCompany) {
     const addrHash = localCompany.registeredAddressHash ?? undefined;
-    const [filings, officers, pscs, clusterAnomaly] = await Promise.all([
+    const [filings, officers, pscs, clusterAnomaly, identity] = await Promise.all([
       getCompanyFilings(cn),
       getCompanyOfficers(cn),
       getCompanyPscs(cn),
       addrHash ? getAnomalyForAddress(addrHash) : Promise.resolve(null),
+      getCompanyIdentity(cn),
     ]);
     // Fallback to CH REST when local DB has no filings or officers yet
     const [restFilings, restOfficers] = await Promise.all([
@@ -89,6 +92,7 @@ export default async function CompanyPage({ params }: Props) {
         pscs={pscs}
         fromRest={false}
         clusterAnomaly={clusterAnomaly}
+        identity={identity}
       />
     );
   }
@@ -133,6 +137,7 @@ function CompanyProfile({
   restPscs = [],
   fromRest,
   clusterAnomaly = null,
+  identity = null,
 }: {
   company: AnyCompany;
   filings: Awaited<ReturnType<typeof getCompanyFilings>>;
@@ -143,6 +148,7 @@ function CompanyProfile({
   restPscs?: ChRestPsc[];
   fromRest: boolean;
   clusterAnomaly?: { id: string; score: number } | null;
+  identity?: CompanyIdentity | null;
 }) {
   const addr = company.registeredAddress as Record<string, string>;
   const addressLines = [
@@ -189,6 +195,16 @@ function CompanyProfile({
       {/* Header */}
       <div className="space-y-4">
         <div className="flex flex-wrap items-start gap-3">
+          {identity?.faviconUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={identity.faviconUrl}
+              alt=""
+              width={32}
+              height={32}
+              className="rounded mt-1 shrink-0 border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
+            />
+          )}
           <h1 className="text-2xl font-bold text-[var(--text-primary)] leading-tight">
             {company.name}
           </h1>
@@ -196,6 +212,24 @@ function CompanyProfile({
             {company.status}
           </span>
         </div>
+
+        {identity?.websiteUrl && (
+          <div className="space-y-1.5">
+            <a
+              href={identity.websiteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline underline-offset-2 font-mono"
+            >
+              {new URL(identity.websiteUrl).hostname.replace(/^www\./, "")} ↗
+            </a>
+            {identity.websiteDescription && (
+              <p className="text-sm text-[var(--text-secondary)] italic max-w-2xl leading-relaxed">
+                {identity.websiteDescription}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-[var(--text-muted)]">
           <span className="text-[var(--text-secondary)]">{company.companyNumber}</span>

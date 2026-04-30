@@ -76,6 +76,7 @@ services:
       BLUESKY_HANDLE: ${BLUESKY_HANDLE:-}
       BLUESKY_APP_PASSWORD: ${BLUESKY_APP_PASSWORD:-}
       SITE_URL: ${SITE_URL:-https://companieshouse.watch}
+      BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

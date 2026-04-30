@@ -147,6 +147,36 @@ export async function getCompany(companyNumber: string): Promise<Company | null>
   return rows[0] ?? null;
 }
 
+export interface CompanyIdentity {
+  companyNumber: string;
+  websiteUrl: string | null;
+  websiteTitle: string | null;
+  websiteDescription: string | null;
+  faviconUrl: string | null;
+  resolutionMethod: string;
+  resolutionConfidence: string;
+}
+
+export async function getCompanyIdentity(
+  companyNumber: string,
+): Promise<CompanyIdentity | null> {
+  const rows = await sql<CompanyIdentity[]>`
+    SELECT
+      company_number,
+      website_url,
+      website_title,
+      website_description,
+      favicon_url,
+      resolution_method,
+      resolution_confidence
+    FROM public.company_identity
+    WHERE company_number = ${companyNumber}
+      AND website_url IS NOT NULL
+      AND resolution_confidence IN ('high', 'medium')
+  `;
+  return rows[0] ?? null;
+}
+
 export async function getCompanyFilings(
   companyNumber: string,
   limit = 50
