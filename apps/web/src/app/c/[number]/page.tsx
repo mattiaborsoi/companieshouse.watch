@@ -415,6 +415,13 @@ function PressSection({ press, totalCount }: { press: PressMention[]; totalCount
       <p className="font-mono text-[10px] text-[var(--text-muted)] leading-relaxed">
         Mentions sourced from the GDELT global news index. We don&apos;t curate or rank — links open the original article.
         {totalCount > press.length && ` ${totalCount - press.length} older mention${totalCount - press.length === 1 ? "" : "s"} available.`}
+        {" "}
+        <a
+          href="mailto:takedowns@borsoi.co.uk?subject=Incorrect%20press%20mention"
+          className="hover:text-[var(--accent)] transition-colors underline underline-offset-2"
+        >
+          Report incorrect mention
+        </a>.
       </p>
     </section>
   );

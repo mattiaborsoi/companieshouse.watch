@@ -14,6 +14,7 @@ Or programmatically:
 """
 import asyncio
 import logging
+import re
 import sys
 from base64 import b64encode
 
@@ -77,10 +78,22 @@ async def _paginated(client: httpx.AsyncClient, base_path: str, max_pages: int =
     return items
 
 
-async def backfill_one(pool: asyncpg.Pool, company_number: str) -> dict:
-    """Pull full company + officers + PSCs + filings into Postgres."""
+async def backfill_one(
+    pool: asyncpg.Pool,
+    company_number: str,
+    follow_directors: bool = False,
+    max_companies_per_director: int = 10,
+) -> dict:
+    """Pull full company + officers + PSCs + filings into Postgres.
+
+    follow_directors=True ALSO pulls the company-list for each active director
+    of this company AND backfills (profile only, no filings) the first
+    `max_companies_per_director` companies they're appointed at. This is what
+    makes the 'Directors also run' section populate for big-name companies
+    whose directors sit on many other boards.
+    """
     bound = log.bind(company_number=company_number)
-    summary = {"company": False, "filings": 0, "officers": 0, "pscs": 0}
+    summary = {"company": False, "filings": 0, "officers": 0, "pscs": 0, "linked_companies": 0}
 
     async with _client() as client:
         # 1. Company profile
@@ -104,14 +117,23 @@ async def backfill_one(pool: asyncpg.Pool, company_number: str) -> dict:
             except (asyncpg.PostgresError, KeyError) as e:
                 bound.warning("filing_upsert_failed", error=str(e), txn=f.get("transaction_id"))
 
-        # 3. Officers
+        # 3. Officers (and capture officer slugs so we can follow them)
         officers = await _paginated(client, f"/company/{company_number}/officers")
+        active_officer_slugs: list[str] = []
         for o in officers:
             o.setdefault("company_number", company_number)
             try:
                 async with pool.acquire() as conn:
                     await upsert_officer_appointment(conn, o)
                 summary["officers"] += 1
+                # Collect active directors only
+                if not o.get("resigned_on"):
+                    self_link = (o.get("links") or {}).get("self") or (o.get("links") or {}).get("officer", {}).get("appointments")
+                    if self_link:
+                        # self_link is like "/officers/{slug}/appointments"
+                        m = re.search(r"/officers/([^/]+)/", self_link)
+                        if m:
+                            active_officer_slugs.append(m.group(1))
             except (asyncpg.PostgresError, KeyError) as e:
                 bound.warning("officer_upsert_failed", error=str(e))
 
@@ -126,18 +148,60 @@ async def backfill_one(pool: asyncpg.Pool, company_number: str) -> dict:
             except (asyncpg.PostgresError, KeyError) as e:
                 bound.warning("psc_upsert_failed", error=str(e))
 
+        # 5. Optionally follow each active director's other companies. We pull
+        # the full appointment list per officer (which gives us their other
+        # company numbers) and then backfill those companies' profile + officers
+        # so person_match_key cross-matches work in the UI.
+        if follow_directors and active_officer_slugs:
+            seen_companies: set[str] = {company_number}
+            for slug in active_officer_slugs:
+                appts = await _get(client, f"/officers/{slug}/appointments?items_per_page=50")
+                if not appts:
+                    continue
+                items = appts.get("items") or []
+                for it in items[:max_companies_per_director]:
+                    appointed_to = (it.get("appointed_to") or {})
+                    other_cn = appointed_to.get("company_number")
+                    if not other_cn or other_cn in seen_companies:
+                        continue
+                    seen_companies.add(other_cn)
+                    # Pull the other company's profile + officers (no filings — keeps it cheap)
+                    other_profile = await _get(client, f"/company/{other_cn}")
+                    if not other_profile:
+                        continue
+                    async with pool.acquire() as conn:
+                        try:
+                            await upsert_company(conn, other_profile)
+                        except (asyncpg.PostgresError, KeyError) as e:
+                            bound.warning("linked_company_upsert_failed", company=other_cn, error=str(e))
+                            continue
+                    # Pull officers so person_match_key matches across companies
+                    other_officers = await _paginated(client, f"/company/{other_cn}/officers", max_pages=1)
+                    for oo in other_officers:
+                        oo.setdefault("company_number", other_cn)
+                        try:
+                            async with pool.acquire() as conn:
+                                await upsert_officer_appointment(conn, oo)
+                        except (asyncpg.PostgresError, KeyError) as e:
+                            bound.warning("linked_officer_upsert_failed", error=str(e))
+                    summary["linked_companies"] += 1
+
     bound.info("backfill_one_complete", **summary)
     return summary
 
 
-async def backfill_many(company_numbers: list[str], resolve_identity: bool = True) -> None:
+async def backfill_many(
+    company_numbers: list[str],
+    resolve_identity: bool = True,
+    follow_directors: bool = False,
+) -> None:
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
     )
     pool = await get_pool()
     try:
         for cn in company_numbers:
-            await backfill_one(pool, cn)
+            await backfill_one(pool, cn, follow_directors=follow_directors)
             if resolve_identity:
                 try:
                     await resolve_company_identity(pool, cn)
@@ -153,6 +217,13 @@ async def backfill_many(company_numbers: list[str], resolve_identity: bool = Tru
 if __name__ == "__main__":
     args = sys.argv[1:]
     if not args:
-        print("Usage: python -m worker.backfill_companies <company_number> [<company_number> ...]", file=sys.stderr)
+        print(
+            "Usage: python -m worker.backfill_companies [--follow-directors] <company_number> [...]\n"
+            "  --follow-directors  also backfill (profile + officers) for each director's other companies\n"
+            "                      so the 'Directors also run' UI section populates",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    asyncio.run(backfill_many(args))
+    follow = "--follow-directors" in args
+    args = [a for a in args if not a.startswith("--")]
+    asyncio.run(backfill_many(args, follow_directors=follow))

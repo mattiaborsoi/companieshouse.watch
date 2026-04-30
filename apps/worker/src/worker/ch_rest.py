@@ -63,7 +63,11 @@ async def _record_success() -> None:
 
 
 async def get_company(company_number: str) -> dict | None:
-    await _wait_for_backoff()
+    # Fail-fast when we're in a CH 429 backoff window. Sleeping here would
+    # occupy a worker job slot for up to 600 s while the rest of the queue
+    # (events whose companies ARE already in DB) backs up behind it.
+    if time.monotonic() < _backoff_until:
+        return None
     try:
         resp = await _client().get(f"/company/{company_number}")
         if resp.status_code == 429:
