@@ -618,6 +618,25 @@ export interface AnomalyFeatures {
   nationality?: string;
   recent_90_days?: number;
   recent_30_days?: number;
+  // officer_churn fields
+  company_name?: string;
+  company_number?: string;
+  status?: string;
+  incorporated_on?: string | null;
+  appointments_90d?: number;
+  terminations_90d?: number;
+  total_churn?: number;
+  officers?: Array<{
+    officer_id: string;
+    name: string;
+    role: string;
+    appointed_on: string | null;
+    resigned_on: string | null;
+  }>;
+  // bulk_registration fields
+  address_hash?: string;
+  inc_date?: string;
+  companies_on_day?: number;
   // common
   company_count: number;
   companies: Array<{
@@ -645,6 +664,19 @@ function normalizeFeatures(raw: unknown): AnomalyFeatures {
     nationality:           f["nationality"] as string | undefined,
     recent_90_days:        (pick("recent_90_days", "recent90Days") as number) ?? undefined,
     recent_30_days:        (pick("recent_30_days", "recent30Days") as number) ?? undefined,
+    // officer_churn
+    company_name:          pick("company_name", "companyName") as string | undefined,
+    company_number:        pick("company_number", "companyNumber") as string | undefined,
+    status:                f["status"] as string | undefined,
+    incorporated_on:       pick("incorporated_on", "incorporatedOn") as string | null | undefined,
+    appointments_90d:      (pick("appointments_90d", "appointments90d") as number) ?? undefined,
+    terminations_90d:      (pick("terminations_90d", "terminations90d") as number) ?? undefined,
+    total_churn:           (pick("total_churn", "totalChurn") as number) ?? undefined,
+    officers:              (f["officers"] as AnomalyFeatures["officers"]) ?? undefined,
+    // bulk_registration
+    address_hash:          pick("address_hash", "addressHash") as string | undefined,
+    inc_date:              pick("inc_date", "incDate") as string | undefined,
+    companies_on_day:      (pick("companies_on_day", "companiesOnDay") as number) ?? undefined,
     companies:             (f["companies"] as AnomalyFeatures["companies"]) ?? [],
   };
 }
