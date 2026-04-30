@@ -146,6 +146,11 @@ def _parse_articles(raw: dict) -> list[PressArticle]:
         seendate = (it.get("seendate") or "").strip()
         if not url or not title or not seendate:
             continue
+        # SECURITY: only http/https URLs. GDELT controls its own results but
+        # never trust external strings that end up in <a href>. Blocks
+        # javascript:, data:, file:, etc. schemes before they reach the DB.
+        if not (url.startswith("https://") or url.startswith("http://")):
+            continue
         if _domain_excluded(url):
             continue
         domain = (it.get("domain") or "").lower().strip()

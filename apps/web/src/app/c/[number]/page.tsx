@@ -382,6 +382,11 @@ function CompanyProfile({
 // ─── Phase 4: press mentions ──────────────────────────────────
 
 function PressSection({ press, totalCount }: { press: PressMention[]; totalCount: number }) {
+  // Defence in depth: only render http/https URLs. The press resolver already
+  // filters at insert time, but we re-check here so a stale/manual row can't
+  // become an XSS vector via javascript: / data: schemes.
+  const safe = press.filter((p) => /^https?:\/\//i.test(p.url));
+  if (safe.length === 0) return null;
   return (
     <section className="space-y-3">
       <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
@@ -389,7 +394,7 @@ function PressSection({ press, totalCount }: { press: PressMention[]; totalCount
       </h2>
       <div className="rounded-md border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]"
            style={{ boxShadow: "var(--panel-shadow)" }}>
-        {press.map((p) => (
+        {safe.map((p) => (
           <a
             key={p.url}
             href={p.url}

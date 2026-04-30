@@ -32,9 +32,9 @@ export default function AboutPage() {
           <div className="border-l-2 border-[var(--border)] pl-4 space-y-1">
             <p className="text-sm font-semibold text-[var(--text-primary)]">Search for a company</p>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              Type a company name or registration number into the search box. You&apos;ll get
-              its current status, registered address, filing history, officers, and persons
-              with significant control — all in one place.
+              Type a company name, registration number, postcode, or person into the search box.
+              You&apos;ll get the company&apos;s current status, registered address, filing history,
+              officers, and persons with significant control — all in one place.
             </p>
           </div>
 
@@ -45,6 +45,17 @@ export default function AboutPage() {
               every event streaming from Companies House in real time: new filings, officer
               appointments, PSC changes, and incorporations. Filter by category to focus on
               what matters to you.
+            </p>
+          </div>
+
+          <div className="border-l-2 border-[var(--border)] pl-4 space-y-1">
+            <p className="text-sm font-semibold text-[var(--text-primary)]">Read a profile end-to-end</p>
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+              Each company profile shows the registered identity (favicon, website, description),
+              <Link href="/methodology" className="text-[var(--accent)] hover:underline"> filing-pattern badges</Link>{" "}
+              like &quot;director churn&quot; or &quot;long dormant&quot;, recent press mentions,
+              other companies the directors are involved with, full filing history with direct
+              links to the Companies House PDFs, and the live PSC structure.
             </p>
           </div>
 
@@ -121,9 +132,20 @@ export default function AboutPage() {
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Data sourcing</h2>
         <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-          All data comes directly from Companies House under the Open Government Licence v3.0.
-          We do not modify the underlying data. Every datum links back to its source on the
-          public register.
+          All Companies House data — filings, officers, PSCs, registered addresses — comes
+          directly from the Companies House public register under the Open Government Licence
+          v3.0. We do not modify the underlying data; every datum links back to its source.
+        </p>
+        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+          The <em>In the news</em> section on company profiles is sourced from the public
+          GDELT global news index. Headlines appear verbatim, links open the original article on
+          the publisher&apos;s site. We don&apos;t curate, rank, or summarise these mentions —
+          they&apos;re a passthrough.
+        </p>
+        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+          Company website + description + favicon (where shown) is resolved by searching for the
+          official site and verifying the company name and registration number appear on the page.
+          A &quot;report incorrect website&quot; link on every profile takes feedback at any time.
         </p>
       </section>
 

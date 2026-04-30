@@ -102,12 +102,54 @@ export default function MethodologyPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="section-label">Other profile sections</h2>
+        <div className="panel p-5 text-sm text-[var(--text-secondary)] leading-relaxed space-y-3">
+          <div>
+            <p className="font-mono text-xs font-bold text-[var(--text-primary)]">Directors also run</p>
+            <p>
+              Other companies that a current director of this company is appointed at. We match
+              by lower-cased name + date of birth (year + month) — the date of birth is the
+              disambiguator, so officers with no DoB on record aren&apos;t matched. A
+              &quot;report incorrect link&quot; mailto on every match takes feedback.
+            </p>
+          </div>
+          <div>
+            <p className="font-mono text-xs font-bold text-[var(--text-primary)]">Likely the same person</p>
+            <p>
+              On officer profiles, other officer records that share the same name + DoB.
+              Companies House often issues a fresh officer ID per appointment, so a single human
+              can appear under many IDs; this section clusters them.
+            </p>
+          </div>
+          <div>
+            <p className="font-mono text-xs font-bold text-[var(--text-primary)]">In the news</p>
+            <p>
+              Recent press mentions for the company sourced from the public GDELT global news
+              index. We query the exact registered name (including LIMITED/LTD/PLC) so generic
+              short names won&apos;t match unrelated articles. PR wires, stock-talk farms, and
+              aggregators are filtered out. Cached for 7 days.
+            </p>
+          </div>
+          <div>
+            <p className="font-mono text-xs font-bold text-[var(--text-primary)]">Website + favicon</p>
+            <p>
+              When a company has an active site, we resolve it via search and verify the page
+              contains the company name (and ideally the registration number). The favicon is
+              downloaded once, served from our domain, and cached.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="section-label">Refresh cadence</h2>
         <div className="panel p-5 text-sm text-[var(--text-secondary)] leading-relaxed">
           <p>
-            All patterns are recomputed nightly across every company in our database. Patterns
-            that no longer apply are marked inactive (rather than deleted) so the badges
-            reflect the current state of the register.
+            Patterns are recomputed nightly across every company in our database. Press mentions
+            refresh weekly per company; older or quiet companies extend to 90 days after several
+            empty results. Identity (website + favicon) is cached for 60–180 days. Patterns that
+            no longer apply are marked inactive rather than deleted, so the badges reflect the
+            current state of the register.
           </p>
         </div>
       </section>
@@ -116,9 +158,10 @@ export default function MethodologyPage() {
         <h2 className="section-label">Data and disclaimers</h2>
         <div className="panel p-5 text-sm text-[var(--text-secondary)] leading-relaxed space-y-2">
           <p>
-            All input data comes from Companies House under the Open Government Licence v3.0.
-            Patterns are derived from filings, appointments, and company status — never from
-            third-party data.
+            Companies House data (filings, officers, PSCs, status) comes directly from the
+            public register under the Open Government Licence v3.0. Press mentions come from the
+            public GDELT global news index. Identity data (website / favicon / description)
+            comes from the company&apos;s own homepage.
           </p>
           <p>
             See the <Link href="/legal" className="text-[var(--accent)] hover:underline underline-offset-2">legal &amp; takedown</Link> page
