@@ -91,6 +91,29 @@ def _short_name(name: str) -> str:
     return _RE_NAME_SUFFIXES.sub("", name).strip()
 
 
+_TWO_PART_TLD_SLDS = {"co", "com", "org", "net", "gov", "ac", "edu", "ltd"}
+
+
+def _domain_root(domain: str) -> str:
+    """Extract the meaningful label from a domain.
+
+      www.greggs.com    → greggs
+      greggs.co.uk      → greggs
+      monzo.com         → monzo
+      sub.example.co.uk → example
+    """
+    domain = domain.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    parts = [p for p in domain.split(".") if p]
+    if len(parts) < 2:
+        return ""
+    # Two-part TLDs like .co.uk, .com.au — back up one more component
+    if len(parts) >= 3 and parts[-2] in _TWO_PART_TLD_SLDS:
+        return parts[-3]
+    return parts[-2]
+
+
 def _domain_matches_name(domain: str, company_name: str) -> bool:
     """True if the domain's root looks related to the company name.
 
@@ -99,19 +122,14 @@ def _domain_matches_name(domain: str, company_name: str) -> bool:
     domain (tracxn.com, crunchbase.com, etc.) does not.
     """
     import re
-    # Strip TLD: take the second-to-last component.
-    parts = [p for p in domain.lower().split(".") if p]
-    if len(parts) < 2:
-        return False
-    domain_root = parts[-2] if parts[-1] not in ("co", "com") or len(parts) < 3 else parts[-3]
-    domain_alpha = re.sub(r"[^a-z]", "", domain_root)
+    domain_alpha = re.sub(r"[^a-z]", "", _domain_root(domain))
     name_alpha = re.sub(r"[^a-z]", "", _short_name(company_name).lower())
     if not domain_alpha or not name_alpha or len(domain_alpha) < 3:
         return False
     if domain_alpha in name_alpha or name_alpha in domain_alpha:
         return True
-    # Token overlap (e.g. "monzo" in "monzo bank")
-    name_tokens = {t for t in re.findall(r"[a-z]{3,}", _short_name(company_name).lower())}
+    # Token overlap (e.g. domain "monzo" matches name "MONZO BANK")
+    name_tokens = set(re.findall(r"[a-z]{3,}", _short_name(company_name).lower()))
     if domain_alpha in name_tokens:
         return True
     return False
