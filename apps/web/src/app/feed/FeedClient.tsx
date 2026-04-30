@@ -46,6 +46,8 @@ export default function FeedClient() {
     es.onerror = () => setConnected(false);
     es.onmessage = (e) => {
       const ev: FilingEvent = JSON.parse(e.data);
+      // Deduplicate: skip if this transactionId is already in the buffer
+      if (bufferRef.current.some((b) => b.transactionId === ev.transactionId)) return;
       bufferRef.current = [ev, ...bufferRef.current].slice(0, MAX_EVENTS);
       setTotal((t) => t + 1);
       if (!paused) {

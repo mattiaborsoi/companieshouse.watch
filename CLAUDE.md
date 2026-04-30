@@ -44,6 +44,13 @@ Full spec is in `docs/BUILD_PLAN.md` (architecture, phases, AI policy) and `docs
 - `apps/web/src/app/anomalies/` — list page (scored clusters) + detail page (`/anomalies/[id]`) with company table, shared directors, and "Generate AI explanation" button. Handles all four anomaly kinds.
 - `apps/web/src/app/api/anomalies/[id]/explain/` — Next.js API route that proxies to llm-gateway.
 
+### Search enhancements (complete)
+- `apps/web/src/app/search/` — company search with CH REST fallback, people/officer search with CH REST fallback (`searchChRestOfficers`), UK postcode detection (regex) that forces CH REST company lookup even when local results exist.
+- `apps/web/src/lib/utils.ts` — `sicDescription(code)`: full UK SIC 2007 lookup (600+ codes + division-level fallback). `formatFilingDescription(type, description)`: checks `type` code first, then `description` slug, then human-readable description, then slug-converts `type`.
+- Company profile `/c/[number]`: SIC codes show human-readable description, filing rows link directly to CH filing viewer (`find-and-update.company-information.service.gov.uk/company/{cn}/filing-history/{txId}`).
+- Officer profile `/officer/[id]`: service address extracted from CH REST appointments response and displayed.
+- Live feed `/feed`: client-side deduplication by `transactionId` (prevents duplicates on SSE reconnect after deploy).
+
 ### Not yet built
 - XBRL financials parser (Phase 4)
 
