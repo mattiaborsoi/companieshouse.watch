@@ -126,12 +126,15 @@ async def backfill_one(
                 async with pool.acquire() as conn:
                     await upsert_officer_appointment(conn, o)
                 summary["officers"] += 1
-                # Collect active directors only
+                # Collect active directors only. CH REST puts the officer's
+                # full appointment list at links.officer.appointments
+                # (links.self points to this company's appointment, not the
+                # officer profile).
                 if not o.get("resigned_on"):
-                    self_link = (o.get("links") or {}).get("self") or (o.get("links") or {}).get("officer", {}).get("appointments")
-                    if self_link:
-                        # self_link is like "/officers/{slug}/appointments"
-                        m = re.search(r"/officers/([^/]+)/", self_link)
+                    links = o.get("links") or {}
+                    appts_link = (links.get("officer") or {}).get("appointments")
+                    if appts_link:
+                        m = re.search(r"/officers/([^/]+)/", appts_link)
                         if m:
                             active_officer_slugs.append(m.group(1))
             except (asyncpg.PostgresError, KeyError) as e:
