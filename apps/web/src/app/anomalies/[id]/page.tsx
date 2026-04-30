@@ -461,7 +461,7 @@ function BulkRegistrationDetail({ anomaly }: { anomaly: Awaited<ReturnType<typeo
                 </tr>
               </thead>
               <tbody>
-                {f.companies.map((c: { number: string; name: string; status: string; incorporated_on: string | null }) => (
+                {f.companies.map((c) => (
                   <tr key={c.number}>
                     <td>
                       <Link href={`/c/${c.number}`}
