@@ -505,37 +505,27 @@ export async function searchChRestOfficers(query: string): Promise<{
   addressSnippet: string | null;
   chSlug: string | null;
 }[]> {
-  const key = process.env.CH_REST_KEY;
-  if (!key) return [];
-  const token = Buffer.from(`${key}:`).toString("base64");
-  try {
-    const res = await fetch(
-      `https://api.company-information.service.gov.uk/search/officers?q=${encodeURIComponent(query)}&items_per_page=10`,
-      {
-        headers: { Authorization: `Basic ${token}` },
-        next: { revalidate: 60 },
-      }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.items ?? []).map((item: Record<string, unknown>) => {
-      const dob = (item.date_of_birth as Record<string, number>) ?? {};
-      const links = (item.links as Record<string, string>) ?? {};
-      const selfLink = links.self ?? "";
-      const slugMatch = selfLink.match(/\/officers\/([^/]+)\//);
-      return {
-        nameFull: (item.title as string) ?? "Unknown",
-        appointmentCount: (item.appointment_count as number) ?? 0,
-        dateOfBirthYear: dob.year ?? null,
-        dateOfBirthMonth: dob.month ?? null,
-        nationality: null,
-        addressSnippet: (item.address_snippet as string) ?? null,
-        chSlug: slugMatch?.[1] ?? null,
-      };
-    });
-  } catch {
-    return [];
-  }
+  const r = await chCachedGet(
+    `/search/officers?q=${encodeURIComponent(query)}&items_per_page=10`,
+    120,
+  );
+  if (!r.ok) return [];
+  const data = r.data as { items?: Record<string, unknown>[] };
+  return (data.items ?? []).map((item) => {
+    const dob = (item.date_of_birth as Record<string, number>) ?? {};
+    const links = (item.links as Record<string, string>) ?? {};
+    const selfLink = links.self ?? "";
+    const slugMatch = selfLink.match(/\/officers\/([^/]+)\//);
+    return {
+      nameFull: (item.title as string) ?? "Unknown",
+      appointmentCount: (item.appointment_count as number) ?? 0,
+      dateOfBirthYear: dob.year ?? null,
+      dateOfBirthMonth: dob.month ?? null,
+      nationality: null,
+      addressSnippet: (item.address_snippet as string) ?? null,
+      chSlug: slugMatch?.[1] ?? null,
+    };
+  });
 }
 
 // Search Companies House REST API directly — used when local DB has no results
@@ -547,21 +537,14 @@ export async function searchChRestApi(query: string): Promise<{
   dateOfCreation: string | null;
   addressSnippet: string | null;
 }[]> {
-  const key = process.env.CH_REST_KEY;
-  if (!key) return [];
-
-  const token = Buffer.from(`${key}:`).toString("base64");
+  const r = await chCachedGet(
+    `/search/companies?q=${encodeURIComponent(query)}&items_per_page=10`,
+    120,
+  );
+  if (!r.ok) return [];
+  const data = r.data as { items?: Record<string, unknown>[] };
   try {
-    const res = await fetch(
-      `https://api.company-information.service.gov.uk/search/companies?q=${encodeURIComponent(query)}&items_per_page=10`,
-      {
-        headers: { Authorization: `Basic ${token}` },
-        next: { revalidate: 60 },
-      }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.items ?? []).map((item: Record<string, unknown>) => ({
+    return (data.items ?? []).map((item) => ({
       companyNumber: item.company_number as string,
       title: item.title as string,
       companyStatus: item.company_status as string ?? "unknown",
@@ -578,15 +561,31 @@ export async function searchChRestApi(query: string): Promise<{
 // On-demand CH REST hydration for company profile pages
 // ---------------------------------------------------------------------------
 
+import { chCachedGet } from "./ch-cache";
+
+// Response-shaped envelope so existing callers keep working with `.status`,
+// `.ok`, and `.json()`.
+interface ChClientResponse {
+  status: number;
+  ok: boolean;
+  // Match the original fetch().json() ergonomics for existing callers.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  json: () => Promise<any>;
+}
+
+function envelope(r: { status: number; ok: boolean; data: unknown }): ChClientResponse {
+  return {
+    status: r.status,
+    ok: r.ok,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    json: async () => r.data as any,
+  };
+}
+
 function chRestClient() {
-  const key = process.env.CH_REST_KEY;
-  if (!key) return null;
-  const token = Buffer.from(`${key}:`).toString("base64");
-  return (path: string) =>
-    fetch(`https://api.company-information.service.gov.uk${path}`, {
-      headers: { Authorization: `Basic ${token}` },
-      next: { revalidate: 300 },
-    });
+  if (!process.env.CH_REST_KEY) return null;
+  return (path: string): Promise<ChClientResponse> =>
+    chCachedGet(path, 600).then(envelope);
 }
 
 export interface ChRestCompany {

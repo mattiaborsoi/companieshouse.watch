@@ -104,6 +104,7 @@ services:
       context: ../../apps/web
     environment:
       DATABASE_URL: postgresql://chwatch:chwatch@postgres:5432/chwatch
+      REDIS_URL: redis://redis:6379/1
       CH_REST_KEY: ${CH_REST_KEY}
       LLM_GATEWAY_URL: http://llm-gateway:8000
       NODE_ENV: production
@@ -112,6 +113,8 @@ services:
       - "3030:3000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
