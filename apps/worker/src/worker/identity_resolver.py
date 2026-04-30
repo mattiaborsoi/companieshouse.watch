@@ -68,7 +68,11 @@ _NONE = "none"
 
 
 def _domain_excluded(url: str) -> bool:
-    netloc = urlparse(url).netloc.lower().lstrip("www.")
+    netloc = urlparse(url).netloc.lower()
+    # Strip the literal "www." prefix only — lstrip("www.") would eat arbitrary
+    # leading {w, .} chars (e.g. "wikidata.org" → "ikidata.org").
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
     if netloc in _EXCLUDED_DOMAINS:
         return True
     return any(netloc.endswith("." + ex) for ex in _EXCLUDED_DOMAINS)
@@ -139,6 +143,12 @@ async def resolve_company_identity(
     for c in candidates:
         page = await fetch_page(c.url)
         if not page:
+            continue
+
+        # Re-check after redirects — a result might redirect to an excluded domain
+        # (e.g. find-and-update.company-information... CH redirects).
+        if _domain_excluded(page.final_url):
+            bound.info("excluded_after_redirect", url=c.url, final_url=page.final_url)
             continue
 
         confidence = _score_match(page.body_text_lower, name, company_number)
