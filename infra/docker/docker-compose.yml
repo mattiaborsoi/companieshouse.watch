@@ -106,7 +106,7 @@ services:
       CH_REST_KEY: ${CH_REST_KEY}
       LLM_GATEWAY_URL: http://llm-gateway:8000
       NODE_ENV: production
-      NEXT_PUBLIC_SITE_URL: ${SITE_URL:-https://companieshouse.watch}
+      NEXT_PUBLIC_SITE_URL: ${SITE_URL:-https://ch.borsoi.co.uk}
     ports:
       - "3030:3000"
     depends_on:

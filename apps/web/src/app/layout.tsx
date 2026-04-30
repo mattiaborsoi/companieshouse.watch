@@ -4,7 +4,7 @@ import NavBar from "@/components/layout/NavBar";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://companieshouse.watch"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://ch.borsoi.co.uk"),
   title: {
     template: "%s | companieshouse.watch",
     default: "companieshouse.watch — Real-time UK Companies House tracker",
