@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: chwatch
       POSTGRES_PASSWORD: chwatch
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       # Bind-mount to local disk so data survives container rebuilds
       - ../../data/postgres:/var/lib/postgresql/data
@@ -23,7 +23,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - ../../data/redis:/data
     command: redis-server --appendonly yes
