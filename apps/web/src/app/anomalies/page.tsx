@@ -102,6 +102,11 @@ export default async function AnomaliesPage() {
                       className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors">
                       {subject}
                     </Link>
+                    {f.formation_agent && (
+                      <span className="ml-2 badge border bg-zinc-900 text-zinc-400 border-zinc-600 font-mono text-[9px]">
+                        Reg. office service
+                      </span>
+                    )}
                   </td>
                   <td className="text-right font-mono text-sm text-[var(--accent)] hidden sm:table-cell">
                     {f.company_count}
@@ -121,9 +126,15 @@ export default async function AnomaliesPage() {
         </table>
       </div>
 
-      <p className="font-mono text-xs text-[var(--text-muted)]">
+      <p className="font-mono text-[10px] text-[var(--text-muted)] leading-relaxed">
         Detection runs every 10 minutes. AI explanations are generated on demand.
         Data from Companies House under the OGL v3.0.
+      </p>
+      <p className="font-mono text-[10px] text-[var(--text-muted)] leading-relaxed border-t border-[var(--border-subtle)] pt-4">
+        These pages describe statistical patterns in public Companies House data.
+        Many patterns have ordinary commercial explanations — formation agents, group structures,
+        or registered-office services. <strong className="text-[var(--text-secondary)]">Patterns are not allegations.</strong>{" "}
+        See our <Link href="/legal" className="text-[var(--accent)] hover:underline underline-offset-2">legal &amp; takedown</Link> page.
       </p>
     </div>
   );

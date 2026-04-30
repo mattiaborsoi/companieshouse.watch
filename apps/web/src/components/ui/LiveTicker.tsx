@@ -17,19 +17,20 @@ interface FilingEvent {
 
 const MAX = 60;
 
-export default function LiveTicker() {
-  const [events, setEvents] = useState<FilingEvent[]>([]);
+export default function LiveTicker({ initialEvents = [] }: { initialEvents?: FilingEvent[] }) {
+  const [events, setEvents] = useState<FilingEvent[]>(initialEvents);
   const [connected, setConnected] = useState(false);
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
-  const esRef = useRef<EventSource | null>(null);
+  const seenRef = useRef<Set<string>>(new Set(initialEvents.map((e) => e.transactionId)));
 
   useEffect(() => {
     const es = new EventSource("/api/events");
-    esRef.current = es;
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false);
     es.onmessage = (e) => {
       const ev: FilingEvent = JSON.parse(e.data);
+      if (seenRef.current.has(ev.transactionId)) return;
+      seenRef.current.add(ev.transactionId);
       setEvents((prev) => [ev, ...prev].slice(0, MAX));
       setNewIds((prev) => new Set(prev).add(ev.transactionId));
       setTimeout(() => setNewIds((prev) => {
@@ -53,8 +54,8 @@ export default function LiveTicker() {
               <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--live)]">Live</span>
             </>
           ) : (
-            <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] animate-pulse">
-              Connecting…
+            <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+              {events.length > 0 ? "Reconnecting…" : "Connecting…"}
             </span>
           )}
         </span>
@@ -62,10 +63,8 @@ export default function LiveTicker() {
 
       {/* Events */}
       {events.length === 0 ? (
-        <div className="px-4 py-12 text-center">
-          <div className="font-mono text-xs uppercase tracking-widest text-[var(--text-muted)]">
-            {connected ? "Waiting for events…" : "Connecting to stream…"}
-          </div>
+        <div className="px-4 py-6 text-center">
+          <div className="font-mono text-xs text-[var(--text-muted)]">Waiting for filings…</div>
         </div>
       ) : (
         <ul className="divide-y divide-[var(--border-subtle)] max-h-[540px] overflow-y-auto">

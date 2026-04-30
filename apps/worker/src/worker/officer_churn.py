@@ -13,6 +13,7 @@ import asyncpg
 import structlog
 
 from .db import get_pool
+from .anomaly_detector import FORMATION_AGENT_POSTCODES, FORMATION_AGENT_COUNT_THRESHOLD
 
 log = structlog.get_logger()
 
@@ -66,7 +67,7 @@ _OFFICERS_FOR_COMPANY_SQL = """
 SELECT
     a.officer_id::text,
     o.name_full,
-    o.role,
+    a.role,
     a.appointed_on,
     a.resigned_on
 FROM public.appointments a
@@ -121,6 +122,11 @@ async def detect_officer_churn(ctx: dict) -> None:
                     continue
 
                 detection_key: str = row["detection_key"]
+                postcode: str = (row["postcode"] or "").upper().strip()
+                is_formation_agent = postcode in FORMATION_AGENT_POSTCODES
+                if is_formation_agent:
+                    score = min(score, 20)
+
                 flagged.append(detection_key)
 
                 officers = await pool.fetch(_OFFICERS_FOR_COMPANY_SQL, detection_key)
@@ -146,6 +152,7 @@ async def detect_officer_churn(ctx: dict) -> None:
                     "terminations_90d":  row["terminations_90d"],
                     "total_churn":       row["total_churn"],
                     "officers":          officer_list,
+                    "formation_agent":   is_formation_agent,
                 }
 
                 await conn.execute(_UPSERT_SQL, detection_key, score, json.dumps(features))

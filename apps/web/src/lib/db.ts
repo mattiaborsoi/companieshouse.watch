@@ -623,6 +623,43 @@ export async function getFilingsFromChRest(companyNumber: string, limit = 50): P
   }
 }
 
+export async function getRecentFilingEvents(limit = 20): Promise<{
+  transactionId: string;
+  companyNumber: string;
+  companyName: string;
+  category: string;
+  type: string;
+  description: string;
+  filingDate: string | null;
+  ingestedAt: string;
+}[]> {
+  const rows = await sql`
+    SELECT
+      f.transaction_id,
+      f.company_number,
+      c.name AS company_name,
+      f.category,
+      f.type,
+      f.description,
+      f.filing_date,
+      f.ingested_at
+    FROM public.filings f
+    JOIN public.companies c USING (company_number)
+    ORDER BY f.ingested_at DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => ({
+    transactionId: r.transactionId as string,
+    companyNumber: r.companyNumber as string,
+    companyName: r.companyName as string,
+    category: r.category as string,
+    type: r.type as string,
+    description: r.description as string,
+    filingDate: r.filingDate ? String(r.filingDate) : null,
+    ingestedAt: String(r.ingestedAt),
+  }));
+}
+
 export async function getStatusBar(): Promise<{
   filingsToday: number;
   lastEventAt: Date | null;
@@ -641,18 +678,19 @@ export async function getStatusBar(): Promise<{
 
 export async function getStats(): Promise<{
   companies: number;
-  filings: number;
+  filingsToday: number;
   officers: number;
   pscs: number;
 }> {
   const rows = await sql`
     SELECT
       (SELECT count(*)::int FROM public.companies)  AS companies,
-      (SELECT count(*)::int FROM public.filings)    AS filings,
+      (SELECT count(*)::int FROM public.filings
+       WHERE ingested_at >= current_date)            AS filings_today,
       (SELECT count(*)::int FROM public.officers)   AS officers,
       (SELECT count(*)::int FROM public.psc)        AS pscs
   `;
-  return rows[0] as { companies: number; filings: number; officers: number; pscs: number };
+  return rows[0] as { companies: number; filingsToday: number; officers: number; pscs: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -666,6 +704,7 @@ export interface AnomalyFeatures {
   locality?: string;
   recently_incorporated?: number;
   shared_directors?: number;
+  formation_agent?: boolean;
   // director_velocity fields
   officer_id?: string;
   officer_name?: string;

@@ -505,6 +505,13 @@ export default async function AnomalyPage(
             ? <BulkRegistrationDetail anomaly={anomaly} />
             : <AddressClusterDetail anomaly={anomaly} />
       }
+      <p className="font-mono text-[10px] text-[var(--text-muted)] leading-relaxed border-t border-[var(--border-subtle)] pt-4">
+        This page describes a statistical pattern in public Companies House data.
+        Many such patterns have ordinary commercial explanations — formation agents, registered-office
+        services, group structures, or coincidence. <strong className="text-[var(--text-secondary)]">Patterns are not allegations.</strong>{" "}
+        All data is sourced from Companies House under the Open Government Licence v3.0.{" "}
+        <Link href="/legal" className="text-[var(--accent)] hover:underline underline-offset-2">Legal &amp; takedown</Link>
+      </p>
     </div>
   );
 }

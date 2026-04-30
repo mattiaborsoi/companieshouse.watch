@@ -14,6 +14,7 @@ import asyncpg
 import structlog
 
 from .db import get_pool
+from .anomaly_detector import FORMATION_AGENT_POSTCODES, FORMATION_AGENT_COUNT_THRESHOLD
 
 log = structlog.get_logger()
 
@@ -117,6 +118,14 @@ async def detect_bulk_registration(ctx: dict) -> None:
                     continue
 
                 detection_key: str = row["detection_key"]
+                postcode: str = (row["postcode"] or "").upper().strip()
+                is_formation_agent = (
+                    postcode in FORMATION_AGENT_POSTCODES
+                    or row["companies_on_day"] >= FORMATION_AGENT_COUNT_THRESHOLD
+                )
+                if is_formation_agent:
+                    score = min(score, 20)
+
                 flagged.append(detection_key)
 
                 companies = await pool.fetch(
@@ -142,6 +151,7 @@ async def detect_bulk_registration(ctx: dict) -> None:
                     "inc_date":         row["inc_date"].isoformat(),
                     "companies_on_day": row["companies_on_day"],
                     "companies":        company_list,
+                    "formation_agent":  is_formation_agent,
                 }
 
                 await conn.execute(_UPSERT_SQL, detection_key, score, json.dumps(features))

@@ -20,6 +20,46 @@ PROMPT_VERSION = "address_cluster_v1"
 MIN_COMPANY_COUNT = 5   # ignore tiny clusters
 SCORE_THRESHOLD = 20    # only flag clusters at or above this score
 
+# Postcodes of major UK registered-office service providers (formation agents).
+# Addresses here attract thousands of legitimately-formed companies and should
+# NOT score as high-risk anomalies. We cap their score and flag them visually
+# on the front end so users know what they're looking at.
+FORMATION_AGENT_POSTCODES: frozenset[str] = frozenset({
+    "WC2H 9JQ",  # 71-75 Shelton Street (1st Formations, many others)
+    "WC1N 3AX",  # 27 Old Gloucester Street (Made Simple Group, Companies Made Simple)
+    "EC1V 2NX",  # 128 City Road (multiple agents)
+    "EC1V 2NJ",  # City Road variations
+    "EC1V 2NW",  # City Road variations
+    "N1 7GU",    # 20 Wenlock Road (Hoxton Mix, old Wise service address)
+    "N1 7GN",    # Wenlock Road
+    "SL9 0BG",   # Gerrards Cross (Jacquards Spaces)
+    "EC2A 4NA",  # 66 Paul Street
+    "EC2A 4NE",  # 86-90 Paul Street
+    "W1W 5PF",   # 167-169 Great Portland Street
+    "BR3 4AB",   # 37 Croydon Road, Beckenham
+    "HR5 3DJ",   # 61 Bridge Street, Herefordshire
+    "EH2 4AN",   # 5 South Charlotte Street, Edinburgh
+    "HG1 1ND",   # 9 Princes Square, Harrogate
+    "IP28 7DE",  # James Carter Road, Bury St. Edmunds
+    "DT1 2PJ",   # Railway Triangle, Dorchester
+    "N21 3NA",   # 1 Kings Avenue, London
+    "DN6 8DA",   # Owston Road, Doncaster
+    "W1B 3HH",   # Third Floor, London (Mayfair agents)
+    "PO15 7AG",  # Solent Business Park, Fareham
+    "HA1 2EY",   # Cox Costello & Horne, Harrow
+    "G1 3NQ",    # Gordon Chambers, Glasgow
+    "HA4 7AE",   # College House, Ruislip
+    "EH3 9WJ",   # 50 Lothian Road, Edinburgh
+    "SW1Y 4LB",  # 12 St. James's Square
+    "SM4 6RW",   # Marshall House, Morden
+    "BT38 7AW",  # 2 Market Place, Carrickfergus
+    "NE3 2ER",   # Cheviot House, Newcastle
+})
+
+# Any address with this many companies is almost certainly a registered office
+# service even if its postcode isn't in the list above.
+FORMATION_AGENT_COUNT_THRESHOLD = 100
+
 
 _CLUSTER_SQL = """
 WITH director_counts AS (
@@ -127,6 +167,19 @@ async def detect_anomalies(ctx: dict) -> None:
                     continue
 
                 detection_key: str = row["detection_key"]
+                postcode: str = (row["postcode"] or "").upper().strip()
+                company_count: int = row["company_count"]
+
+                # Identify known registered-office services (formation agents).
+                # These accumulate large numbers of legitimately-formed companies
+                # and should not be treated as high-risk fraud clusters.
+                is_formation_agent = (
+                    postcode in FORMATION_AGENT_POSTCODES
+                    or company_count >= FORMATION_AGENT_COUNT_THRESHOLD
+                )
+                if is_formation_agent:
+                    score = min(score, 20)
+
                 flagged.append(detection_key)
 
                 companies = await pool.fetch(
@@ -154,6 +207,7 @@ async def detect_anomalies(ctx: dict) -> None:
                     "recently_incorporated": row["recently_incorporated"],
                     "shared_directors": row["shared_directors"],
                     "companies": company_list,
+                    "formation_agent": is_formation_agent,
                 }
 
                 await conn.execute(_UPSERT_SQL, detection_key, score, json.dumps(features))

@@ -865,8 +865,6 @@ export function formatFilingDescription(type: string, description: string | null
     "termination-director":               "Director terminated",
     "appointment-secretary":              "Secretary appointed",
     "termination-secretary":              "Secretary terminated",
-    "change-person-director-company-with-change-date": "Director details changed",
-    "change-person-secretary-company-with-change-date": "Secretary details changed",
     "AA":   "Annual accounts",
     "AA01": "Dormant company accounts",
     "AA02": "Micro-entity accounts",

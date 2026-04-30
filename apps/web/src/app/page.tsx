@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { getStats, getRecentFilings, getRecentActivity, getAnomalies } from "@/lib/db";
+import { getStats, getRecentFilings, getRecentActivity, getAnomalies, getRecentFilingEvents } from "@/lib/db";
 import LiveTicker from "@/components/ui/LiveTicker";
 import SearchBox from "@/components/ui/SearchBox";
 import Marquee from "@/components/ui/Marquee";
@@ -13,18 +13,23 @@ async function StatsRow() {
   const s = await getStats();
   const fmt = (n: number) => n.toLocaleString("en-GB");
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {[
-        { label: "Companies", value: fmt(s.companies), delta: null },
-        { label: "Filings",   value: fmt(s.filings),   delta: "today" },
-        { label: "Officers",  value: fmt(s.officers),   delta: null },
-        { label: "PSCs",      value: fmt(s.pscs),       delta: null },
-      ].map(({ label, value }) => (
-        <div key={label} className="stat-card">
-          <div className="stat-value">{value}</div>
-          <div className="stat-label">{label}</div>
-        </div>
-      ))}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Filings today", value: fmt(s.filingsToday) },
+          { label: "Companies",     value: fmt(s.companies) },
+          { label: "Officers",      value: fmt(s.officers) },
+          { label: "PSCs",          value: fmt(s.pscs) },
+        ].map(({ label, value }) => (
+          <div key={label} className="stat-card">
+            <div className="stat-value">{value}</div>
+            <div className="stat-label">{label}</div>
+          </div>
+        ))}
+      </div>
+      <p className="font-mono text-[10px] text-[var(--text-muted)] px-0.5">
+        Local database growing as the stream runs · Companies House registers ~5.6M entities in total
+      </p>
     </div>
   );
 }
@@ -201,6 +206,11 @@ async function ActivityFeed() {
   );
 }
 
+async function LiveTickerSeeded() {
+  const events = await getRecentFilingEvents(20);
+  return <LiveTicker initialEvents={events} />;
+}
+
 // ─── Page ─────────────────────────────────────────────────
 export default async function HomePage() {
   const filings = await getRecentFilings(1);
@@ -247,7 +257,7 @@ export default async function HomePage() {
 
           <p className="text-sm text-[var(--text-secondary)] max-w-xl leading-relaxed">
             Filings, officer appointments, and ownership changes as they stream from Companies House —
-            plus automated anomaly detection and AI-generated plain-English explanations of suspicious patterns.
+            plus automated pattern detection across addresses, directors and filings.
             Free, open-source, no paywall.{" "}
             <Link href="/about" className="text-[var(--accent)] hover:underline underline-offset-2">About this project</Link>
           </p>
@@ -310,7 +320,9 @@ export default async function HomePage() {
             <div className="flex items-center justify-between">
               <h2 className="section-label">Live stream</h2>
             </div>
-            <LiveTicker />
+            <Suspense fallback={<LiveTicker />}>
+              <LiveTickerSeeded />
+            </Suspense>
           </div>
         </div>
       </div>

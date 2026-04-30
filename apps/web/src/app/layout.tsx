@@ -60,6 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="flex items-center gap-4 font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
                 <Link href="/about"   className="hover:text-[var(--accent)] transition-colors">About</Link>
                 <Link href="/support" className="hover:text-[var(--accent)] transition-colors">Support</Link>
+                <Link href="/legal"   className="hover:text-[var(--accent)] transition-colors">Legal</Link>
                 <a href="https://github.com/mattiaborsoi/companieshouse.watch"
                    target="_blank" rel="noopener noreferrer"
                    className="hover:text-[var(--accent)] transition-colors">

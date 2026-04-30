@@ -33,15 +33,20 @@ async function StatusBar() {
             {" "}companies
           </span>
 
-          {ago && (
-            <>
-              <span className="text-[var(--border)] select-none">|</span>
-              <span className="font-mono text-[10px] tracking-widest uppercase text-[var(--text-muted)] whitespace-nowrap">
-                Last event{" "}
-                <span className="text-[var(--text-secondary)]">{ago}</span>
-              </span>
-            </>
-          )}
+          {s.lastEventAt && (() => {
+            const ageMs = Date.now() - new Date(s.lastEventAt).getTime();
+            const ageMins = ageMs / 60_000;
+            const timeStr = new Date(s.lastEventAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+            const color = ageMins < 5 ? "text-[var(--live)]" : ageMins < 30 ? "text-[var(--text-secondary)]" : "text-amber-400";
+            return (
+              <>
+                <span className="text-[var(--border)] select-none">|</span>
+                <span className={`font-mono text-[10px] tracking-widest uppercase whitespace-nowrap ${color}`}>
+                  Latest filing {timeStr}
+                </span>
+              </>
+            );
+          })()}
 
           <span className="ml-auto shrink-0 font-mono text-[10px] tracking-widest uppercase text-[var(--text-muted)] hidden sm:block">
             4 streams active
