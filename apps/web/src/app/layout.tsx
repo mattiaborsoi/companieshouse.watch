@@ -4,6 +4,7 @@ import NavBar from "@/components/layout/NavBar";
 import Link from "next/link";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://companieshouse.watch"),
   title: {
     template: "%s | companieshouse.watch",
     default: "companieshouse.watch — Real-time UK Companies House tracker",
@@ -59,7 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="flex items-center gap-4 font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
                 <Link href="/about"   className="hover:text-[var(--accent)] transition-colors">About</Link>
                 <Link href="/support" className="hover:text-[var(--accent)] transition-colors">Support</Link>
-                <a href="https://github.com/companieshouse-watch/companieshouse.watch"
+                <a href="https://github.com/mattiaborsoi/companieshouse.watch"
                    target="_blank" rel="noopener noreferrer"
                    className="hover:text-[var(--accent)] transition-colors">
                   Open source

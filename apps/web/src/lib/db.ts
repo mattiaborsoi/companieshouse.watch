@@ -27,6 +27,7 @@ export interface Company {
   dissolvedOn: Date | null;
   registeredAddress: Record<string, string>;
   registeredAddressPostcode: string | null;
+  registeredAddressHash: string | null;
   sicCodes: string[];
   lastEventAt: Date;
 }
@@ -53,6 +54,7 @@ export interface Officer {
   occupation: string | null;
   dateOfBirthYear: number | null;
   dateOfBirthMonth: number | null;
+  chOfficerLink?: string | null;
 }
 
 export interface Appointment {
@@ -136,6 +138,7 @@ export async function getCompany(companyNumber: string): Promise<Company | null>
       dissolved_on,
       registered_address,
       registered_address_postcode,
+      registered_address_hash,
       sic_codes,
       last_event_at
     FROM public.companies
@@ -181,7 +184,8 @@ export async function getCompanyOfficers(companyNumber: string): Promise<(Appoin
       o.country_of_residence,
       o.occupation,
       o.date_of_birth_year,
-      o.date_of_birth_month
+      o.date_of_birth_month,
+      o.ch_officer_link
     FROM public.appointments a
     JOIN public.officers o USING (officer_id)
     WHERE a.company_number = ${companyNumber}
@@ -246,6 +250,7 @@ export async function searchOfficers(query: string, limit = 20): Promise<(Office
       o.occupation,
       o.date_of_birth_year,
       o.date_of_birth_month,
+      o.ch_officer_link,
       COUNT(a.officer_id)::int AS appointment_count
     FROM public.officers o
     LEFT JOIN public.appointments a USING (officer_id)
@@ -326,6 +331,7 @@ export interface ChRestOfficer {
   resignedOn: string | null;
   nationality: string | null;
   occupation: string | null;
+  chOfficerLink: string | null;  // e.g. "/officers/Za4t8N.../appointments"
 }
 
 export interface ChRestPsc {
@@ -369,14 +375,20 @@ export async function getOfficersFromChRest(companyNumber: string): Promise<ChRe
     const res = await client(`/company/${companyNumber}/officers?items_per_page=50`);
     if (!res.ok) return [];
     const d = await res.json();
-    return (d.items ?? []).map((o: Record<string, unknown>) => ({
-      nameFull: o.name as string ?? "",
-      role: o.officer_role as string ?? "unknown",
-      appointedOn: o.appointed_on as string ?? null,
-      resignedOn: o.resigned_on as string ?? null,
-      nationality: (o.nationality as string) ?? null,
-      occupation: (o.occupation as string) ?? null,
-    }));
+    return (d.items ?? []).map((o: Record<string, unknown>) => {
+      const links = (o.links as Record<string, unknown>) ?? {};
+      const officerLinks = (links.officer as Record<string, unknown>) ?? {};
+      const chLink = (officerLinks.appointments as string) ?? null;
+      return {
+        nameFull: (o.name as string) ?? "",
+        role: (o.officer_role as string) ?? "unknown",
+        appointedOn: (o.appointed_on as string) ?? null,
+        resignedOn: (o.resigned_on as string) ?? null,
+        nationality: (o.nationality as string) ?? null,
+        occupation: (o.occupation as string) ?? null,
+        chOfficerLink: chLink,
+      };
+    });
   } catch {
     return [];
   }
@@ -407,17 +419,79 @@ export async function getPscsFromChRest(companyNumber: string): Promise<ChRestPs
   }
 }
 
-export async function getOfficer(officerId: string): Promise<Officer | null> {
+// Extract the CH slug from a ch_officer_link path
+export function chSlugFromLink(link: string): string | null {
+  const m = link.match(/\/officers\/([^/]+)\/appointments/);
+  return m ? m[1] : null;
+}
+
+export interface ChRestAppointment {
+  companyNumber: string;
+  companyName: string;
+  companyStatus: string;
+  role: string;
+  appointedOn: string | null;
+  resignedOn: string | null;
+}
+
+export interface ChRestOfficerProfile {
+  nameFull: string;
+  nationality: string | null;
+  occupation: string | null;
+  dateOfBirthYear: number | null;
+  dateOfBirthMonth: number | null;
+  appointments: ChRestAppointment[];
+}
+
+export async function getOfficerFromChRest(slug: string): Promise<ChRestOfficerProfile | null> {
+  const client = chRestClient();
+  if (!client) return null;
+  try {
+    const res = await client(`/officers/${slug}/appointments?items_per_page=50`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!d.items?.length) return null;
+    const first = d.items[0] as Record<string, unknown>;
+    const name = (d.name as string) ?? (first.name as string) ?? "Unknown";
+    const dob = (d.date_of_birth as Record<string, number>) ?? {};
+    return {
+      nameFull: name,
+      nationality: (d.nationality as string) ?? null,
+      occupation: (d.occupation as string) ?? null,
+      dateOfBirthYear: dob.year ?? null,
+      dateOfBirthMonth: dob.month ?? null,
+      appointments: d.items.map((a: Record<string, unknown>) => {
+        const appointed = (a.appointed_to as Record<string, unknown>) ?? {};
+        return {
+          companyNumber: (appointed.company_number as string) ?? "",
+          companyName: (appointed.company_name as string) ?? (a.name as string) ?? "",
+          companyStatus: (appointed.company_status as string) ?? "unknown",
+          role: (a.officer_role as string) ?? "unknown",
+          appointedOn: (a.appointed_on as string) ?? null,
+          resignedOn: (a.resigned_on as string) ?? null,
+        };
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Look up officer by UUID OR CH slug
+export async function getOfficer(id: string): Promise<Officer | null> {
+  const isUuid = /^[0-9a-f-]{36}$/i.test(id);
   const rows = await sql<Officer[]>`
     SELECT officer_id, forename, surname, name_full, nationality,
-           country_of_residence, occupation, date_of_birth_year, date_of_birth_month
+           country_of_residence, occupation, date_of_birth_year, date_of_birth_month,
+           ch_officer_link
     FROM public.officers
-    WHERE officer_id = ${officerId}
+    WHERE ${isUuid ? sql`officer_id = ${id}::uuid` : sql`ch_officer_link = ${"/officers/" + id + "/appointments"}`}
   `;
   return rows[0] ?? null;
 }
 
-export async function getOfficerAppointments(officerId: string): Promise<(Appointment & { companyName: string; companyStatus: string })[]> {
+export async function getOfficerAppointments(id: string): Promise<(Appointment & { companyName: string; companyStatus: string })[]> {
+  const isUuid = /^[0-9a-f-]{36}$/i.test(id);
   return sql`
     SELECT
       a.company_number,
@@ -429,7 +503,10 @@ export async function getOfficerAppointments(officerId: string): Promise<(Appoin
       c.status AS company_status
     FROM public.appointments a
     JOIN public.companies c USING (company_number)
-    WHERE a.officer_id = ${officerId}
+    ${isUuid
+      ? sql`WHERE a.officer_id = ${id}::uuid`
+      : sql`JOIN public.officers o USING (officer_id) WHERE o.ch_officer_link = ${"/officers/" + id + "/appointments"}`
+    }
     ORDER BY a.resigned_on NULLS FIRST, a.appointed_on DESC NULLS LAST
   `;
 }
@@ -523,4 +600,167 @@ export async function getStats(): Promise<{
       (SELECT count(*)::int FROM public.psc)        AS pscs
   `;
   return rows[0] as { companies: number; filings: number; officers: number; pscs: number };
+}
+
+// ---------------------------------------------------------------------------
+// Anomaly detection
+// ---------------------------------------------------------------------------
+
+export interface AnomalyFeatures {
+  // address_cluster fields
+  address_line_1?: string;
+  postcode?: string;
+  locality?: string;
+  recently_incorporated?: number;
+  shared_directors?: number;
+  // director_velocity fields
+  officer_id?: string;
+  officer_name?: string;
+  nationality?: string;
+  recent_90_days?: number;
+  recent_30_days?: number;
+  // common
+  company_count: number;
+  companies: Array<{
+    number: string;
+    name: string;
+    status: string;
+    incorporated_on?: string | null;
+    appointed_on?: string | null;
+  }>;
+}
+
+// postgres.camel camelizes JSONB keys too; this coerces to snake_case regardless
+function normalizeFeatures(raw: unknown): AnomalyFeatures {
+  const f = raw as Record<string, unknown>;
+  const pick = (snake: string, camel: string) => f[snake] ?? f[camel];
+  return {
+    address_line_1:        pick("address_line_1", "addressLine1") as string | undefined,
+    postcode:              f["postcode"] as string | undefined,
+    locality:              f["locality"] as string | undefined,
+    company_count:         (pick("company_count", "companyCount") as number) ?? 0,
+    recently_incorporated: (pick("recently_incorporated", "recentlyIncorporated") as number) ?? undefined,
+    shared_directors:      (pick("shared_directors", "sharedDirectors") as number) ?? undefined,
+    officer_id:            pick("officer_id", "officerId") as string | undefined,
+    officer_name:          pick("officer_name", "officerName") as string | undefined,
+    nationality:           f["nationality"] as string | undefined,
+    recent_90_days:        (pick("recent_90_days", "recent90Days") as number) ?? undefined,
+    recent_30_days:        (pick("recent_30_days", "recent30Days") as number) ?? undefined,
+    companies:             (f["companies"] as AnomalyFeatures["companies"]) ?? [],
+  };
+}
+
+export interface Anomaly {
+  id: string;
+  kind: string;
+  detectionKey: string;
+  score: number;
+  features: AnomalyFeatures;
+  firstDetectedAt: Date;
+  lastDetectedAt: Date;
+  aiSummaryId: string | null;
+  aiSummaryOutput: string | null;
+  aiSummaryGeneratedAt: Date | null;
+}
+
+export async function getAnomalies(limit = 50): Promise<Anomaly[]> {
+  const rows = await sql<Anomaly[]>`
+    SELECT
+      a.id::text                  AS id,
+      a.kind,
+      a.detection_key,
+      a.score,
+      a.features,
+      a.first_detected_at,
+      a.last_detected_at,
+      a.ai_summary_id::text       AS ai_summary_id,
+      s.output                    AS ai_summary_output,
+      s.generated_at              AS ai_summary_generated_at
+    FROM public.anomalies a
+    LEFT JOIN public.ai_summaries s ON s.id = a.ai_summary_id
+    WHERE a.is_currently_flagged = true
+      AND a.takedown_action IS DISTINCT FROM 'removed'
+    ORDER BY a.score DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => ({ ...r, features: normalizeFeatures(r.features) }));
+}
+
+export async function getAnomaly(id: string): Promise<Anomaly | null> {
+  const rows = await sql<Anomaly[]>`
+    SELECT
+      a.id::text                  AS id,
+      a.kind,
+      a.detection_key,
+      a.score,
+      a.features,
+      a.first_detected_at,
+      a.last_detected_at,
+      a.ai_summary_id::text       AS ai_summary_id,
+      s.output                    AS ai_summary_output,
+      s.generated_at              AS ai_summary_generated_at
+    FROM public.anomalies a
+    LEFT JOIN public.ai_summaries s ON s.id = a.ai_summary_id
+    WHERE a.id = ${id}::uuid
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  return { ...row, features: normalizeFeatures(row.features) };
+}
+
+export async function getCompaniesAtAddress(addressHash: string): Promise<Array<{
+  companyNumber: string;
+  name: string;
+  status: string;
+  incorporatedOn: Date | null;
+  dissolvedOn: Date | null;
+}>> {
+  return sql`
+    SELECT
+      company_number,
+      name,
+      status,
+      incorporated_on,
+      dissolved_on
+    FROM public.companies
+    WHERE registered_address_hash = ${addressHash}
+    ORDER BY incorporated_on DESC NULLS LAST
+    LIMIT 100
+  `;
+}
+
+export async function getAnomalyForAddress(addressHash: string): Promise<{ id: string; score: number } | null> {
+  const rows = await sql`
+    SELECT id::text, score
+    FROM public.anomalies
+    WHERE detection_key = ${addressHash}
+      AND is_currently_flagged = true
+      AND takedown_action IS DISTINCT FROM 'removed'
+    LIMIT 1
+  `;
+  return (rows[0] as { id: string; score: number } | undefined) ?? null;
+}
+
+export async function getSharedDirectors(addressHash: string): Promise<Array<{
+  officerId: string;
+  nameFull: string;
+  nationality: string | null;
+  companyCount: number;
+}>> {
+  return sql`
+    SELECT
+      o.officer_id::text  AS officer_id,
+      o.name_full,
+      o.nationality,
+      COUNT(DISTINCT a.company_number)::int AS company_count
+    FROM public.appointments a
+    JOIN public.officers o ON o.officer_id = a.officer_id
+    JOIN public.companies c ON c.company_number = a.company_number
+    WHERE c.registered_address_hash = ${addressHash}
+      AND a.resigned_on IS NULL
+    GROUP BY o.officer_id, o.name_full, o.nationality
+    HAVING COUNT(DISTINCT a.company_number) >= 2
+    ORDER BY company_count DESC
+    LIMIT 20
+  `;
 }

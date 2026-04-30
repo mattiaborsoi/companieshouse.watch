@@ -10,4 +10,7 @@ COPY src/ src/
 COPY tests/ tests/
 RUN pip install --no-cache-dir --no-deps .
 
+RUN useradd -m appuser
+USER appuser
+
 CMD ["arq", "worker.main.WorkerSettings"]

@@ -12,6 +12,8 @@ import {
   getOfficersFromChRest,
   getPscsFromChRest,
   getFilingsFromChRest,
+  getAnomalyForAddress,
+  chSlugFromLink,
   type Company,
   type ChRestCompany,
   type ChRestFiling,
@@ -33,35 +35,58 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { number } = await params;
   const cn = number.toUpperCase();
   const local = await getCompany(cn);
-  if (local) return { title: local.name };
-  const remote = await getCompanyFromChRest(cn);
-  if (remote) return { title: remote.name };
-  return { title: "Company not found" };
+  const name = local?.name ?? (await getCompanyFromChRest(cn))?.name;
+  if (!name) return { title: "Company not found" };
+  const ogImage = `/api/og/c/${cn}`;
+  return {
+    title: name,
+    openGraph: {
+      title: name,
+      images: [{ url: ogImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: name,
+      images: [ogImage],
+    },
+  };
 }
+
+// UK Companies House numbers: 8 chars, digits or SC/NI/OC/LP/NC/SL/SE/R prefix + digits
+const CH_NUMBER_RE = /^[A-Z]{0,2}[0-9]{6,8}$/;
 
 export default async function CompanyPage({ params }: Props) {
   const { number } = await params;
   const cn = number.toUpperCase();
 
+  if (!CH_NUMBER_RE.test(cn)) notFound();
+
   // Try local DB first; fall back to CH REST
   const localCompany = await getCompany(cn);
 
   if (localCompany) {
-    const [filings, officers, pscs] = await Promise.all([
+    const addrHash = localCompany.registeredAddressHash ?? undefined;
+    const [filings, officers, pscs, clusterAnomaly] = await Promise.all([
       getCompanyFilings(cn),
       getCompanyOfficers(cn),
       getCompanyPscs(cn),
+      addrHash ? getAnomalyForAddress(addrHash) : Promise.resolve(null),
     ]);
-    // If the local DB has no filings yet, pull them from CH REST as fallback
-    const restFilings = filings.length === 0 ? await getFilingsFromChRest(cn) : [];
+    // Fallback to CH REST when local DB has no filings or officers yet
+    const [restFilings, restOfficers] = await Promise.all([
+      filings.length === 0 ? getFilingsFromChRest(cn) : Promise.resolve([]),
+      officers.length === 0 ? getOfficersFromChRest(cn) : Promise.resolve([]),
+    ]);
     return (
       <CompanyProfile
         company={localCompany}
         filings={filings}
         restFilings={restFilings}
         officers={officers}
+        restOfficers={restOfficers}
         pscs={pscs}
         fromRest={false}
+        clusterAnomaly={clusterAnomaly}
       />
     );
   }
@@ -105,6 +130,7 @@ function CompanyProfile({
   restOfficers = [],
   restPscs = [],
   fromRest,
+  clusterAnomaly = null,
 }: {
   company: AnyCompany;
   filings: Awaited<ReturnType<typeof getCompanyFilings>>;
@@ -114,6 +140,7 @@ function CompanyProfile({
   restOfficers?: ChRestOfficer[];
   restPscs?: ChRestPsc[];
   fromRest: boolean;
+  clusterAnomaly?: { id: string; score: number } | null;
 }) {
   const addr = company.registeredAddress as Record<string, string>;
   const addressLines = [
@@ -137,6 +164,24 @@ function CompanyProfile({
           ↗ Fetched live from Companies House — not yet in local database. Profile will populate
           automatically as events stream through.
         </div>
+      )}
+
+      {/* Cluster anomaly warning */}
+      {clusterAnomaly && (
+        <Link
+          href={`/anomalies/${clusterAnomaly.id}`}
+          className="flex items-center gap-3 rounded-md border border-red-900 bg-red-950/40 px-4 py-2.5 hover:bg-red-950/60 transition-colors group"
+        >
+          <span className="font-mono text-xs font-bold text-red-300 tabular-nums border border-red-700 bg-red-950 px-1.5 py-0.5 rounded shrink-0">
+            {clusterAnomaly.score}
+          </span>
+          <span className="text-xs text-red-300 font-mono">
+            This address is part of a flagged cluster — {clusterAnomaly.score >= 70 ? "high" : clusterAnomaly.score >= 40 ? "medium" : "low"} anomaly score.
+          </span>
+          <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-red-400 group-hover:text-red-300 transition-colors shrink-0">
+            View cluster →
+          </span>
+        </Link>
       )}
 
       {/* Header */}
@@ -187,8 +232,8 @@ function CompanyProfile({
       {/* Filing history */}
       <FilingsSection filings={filings} restFilings={restFilings} />
 
-      {/* Officers */}
-      {fromRest ? (
+      {/* Officers — prefer local data; fall back to REST when local is empty */}
+      {(fromRest || officers.length === 0) && restOfficers.length > 0 ? (
         <RestOfficersSection active={activeRestOfficers} former={formerRestOfficers} />
       ) : (
         <LocalOfficersSection active={activeOfficers} former={formerOfficers} />
@@ -273,6 +318,16 @@ function FilingsSection({
   );
 }
 
+function officerHref(chOfficerLink: string | null | undefined, officerId: string | undefined) {
+  // Prefer CH-slug-based internal URL; fall back to UUID; then null
+  if (chOfficerLink) {
+    const slug = chSlugFromLink(chOfficerLink);
+    if (slug) return `/officer/${slug}`;
+  }
+  if (officerId) return `/officer/${officerId}`;
+  return null;
+}
+
 function LocalOfficersSection({
   active,
   former,
@@ -280,6 +335,18 @@ function LocalOfficersSection({
   active: Awaited<ReturnType<typeof getCompanyOfficers>>;
   former: Awaited<ReturnType<typeof getCompanyOfficers>>;
 }) {
+  const toItem = (a: typeof active[0]) => {
+    const flat = a as typeof a & { nameFull?: string; nationality?: string; occupation?: string; chOfficerLink?: string };
+    return {
+      href: officerHref(flat.chOfficerLink, a.officerId),
+      nameFull: flat.nameFull ?? a.officer?.nameFull ?? "Unknown",
+      role: a.role,
+      appointedOn: a.appointedOn ? String(a.appointedOn) : null,
+      resignedOn: a.resignedOn ? String(a.resignedOn) : null,
+      nationality: flat.nationality ?? a.officer?.nationality ?? null,
+      occupation: flat.occupation ?? a.officer?.occupation ?? null,
+    };
+  };
   return (
     <section className="space-y-3">
       <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
@@ -288,60 +355,52 @@ function LocalOfficersSection({
       {active.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)]">No current officers recorded.</p>
       ) : (
-        <OfficerList items={active.map((a) => {
-          const flat = a as typeof a & { nameFull?: string; nationality?: string; occupation?: string };
-          return {
-            officerId: a.officerId,
-            nameFull: flat.nameFull ?? a.officer?.nameFull ?? "Unknown",
-            role: a.role,
-            appointedOn: a.appointedOn ? String(a.appointedOn) : null,
-            resignedOn: a.resignedOn ? String(a.resignedOn) : null,
-            nationality: flat.nationality ?? a.officer?.nationality ?? null,
-            occupation: flat.occupation ?? a.officer?.occupation ?? null,
-          };
-        })} />
+        <OfficerList items={active.map(toItem)} />
       )}
       {former.length > 0 && (
-        <FormerOfficers items={former.map((a) => {
-          const flat = a as typeof a & { nameFull?: string };
-          return {
-            officerId: a.officerId,
-            nameFull: flat.nameFull ?? a.officer?.nameFull ?? "Unknown",
-            role: a.role,
-            appointedOn: a.appointedOn ? String(a.appointedOn) : null,
-            resignedOn: a.resignedOn ? String(a.resignedOn) : null,
-          };
-        })} />
+        <FormerOfficers items={former.map(toItem)} />
       )}
     </section>
   );
 }
 
 function RestOfficersSection({ active, former }: { active: ChRestOfficer[]; former: ChRestOfficer[] }) {
+  const toItem = (o: ChRestOfficer) => ({
+    href: o.chOfficerLink ? `/officer/${chSlugFromLink(o.chOfficerLink) ?? ""}` : null,
+    nameFull: o.nameFull,
+    role: o.role,
+    appointedOn: o.appointedOn,
+    resignedOn: o.resignedOn,
+    nationality: o.nationality,
+    occupation: o.occupation,
+  });
   return (
     <section className="space-y-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-        Current officers · {active.length}
-      </h2>
+      <div className="flex items-center gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Current officers · {active.length}
+        </h2>
+        <span className="font-mono text-xs text-amber-400">live from Companies House</span>
+      </div>
       {active.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)]">No current officers recorded.</p>
       ) : (
-        <OfficerList items={active} />
+        <OfficerList items={active.map(toItem)} />
       )}
-      {former.length > 0 && <FormerOfficers items={former} />}
+      {former.length > 0 && <FormerOfficers items={former.map(toItem)} />}
     </section>
   );
 }
 
-function OfficerList({ items }: { items: { officerId?: string; nameFull: string; role: string; appointedOn: string | null; nationality: string | null; occupation: string | null }[] }) {
+function OfficerList({ items }: { items: { href: string | null; nameFull: string; role: string; appointedOn: string | null; nationality: string | null; occupation: string | null }[] }) {
   return (
     <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
       {items.map((o, i) => (
         <div key={i} className="px-4 py-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              {o.officerId ? (
-                <Link href={`/officer/${o.officerId}`} className="font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors">
+              {o.href ? (
+                <Link href={o.href} className="font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors">
                   {o.nameFull}
                 </Link>
               ) : (
@@ -365,7 +424,7 @@ function OfficerList({ items }: { items: { officerId?: string; nameFull: string;
   );
 }
 
-function FormerOfficers({ items }: { items: { officerId?: string; nameFull: string; role: string; appointedOn: string | null; resignedOn: string | null | undefined }[] }) {
+function FormerOfficers({ items }: { items: { href: string | null; nameFull: string; role: string; appointedOn: string | null; resignedOn: string | null | undefined }[] }) {
   return (
     <details className="mt-2">
       <summary className="cursor-pointer text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors select-none font-mono uppercase tracking-wide">
@@ -375,8 +434,8 @@ function FormerOfficers({ items }: { items: { officerId?: string; nameFull: stri
         {items.map((o, i) => (
           <div key={i} className="px-4 py-3">
             <div className="flex items-start justify-between gap-3">
-              {o.officerId ? (
-                <Link href={`/officer/${o.officerId}`} className="font-medium text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
+              {o.href ? (
+                <Link href={o.href} className="font-medium text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
                   {o.nameFull}
                 </Link>
               ) : (

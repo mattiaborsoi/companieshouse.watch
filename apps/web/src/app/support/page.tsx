@@ -80,7 +80,7 @@ export default function SupportPage() {
 
           {/* GitHub Sponsors */}
           <a
-            href="https://github.com/sponsors"
+            href="https://github.com/sponsors/mattiaborsoi"
             target="_blank"
             rel="noopener noreferrer"
             className="panel p-5 space-y-3 hover:border-[var(--border-bright)] transition-colors group block"
@@ -93,7 +93,7 @@ export default function SupportPage() {
               Recurring monthly contribution. Most direct way to fund ongoing development.
             </p>
             <div className="font-mono text-xs text-[var(--accent)] group-hover:underline underline-offset-2">
-              github.com/sponsors →
+              github.com/sponsors/mattiaborsoi →
             </div>
           </a>
 

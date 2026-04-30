@@ -14,6 +14,11 @@ import structlog
 from arq import Retry
 from arq.connections import RedisSettings
 
+from arq.cron import cron
+
+from .anomaly_detector import detect_anomalies
+from .director_velocity import detect_director_velocity
+from .social_poster import post_daily_anomaly
 from .ch_rest import get_company
 from .config import settings
 from .db import close_pool, get_pool
@@ -190,10 +195,15 @@ async def shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     functions = [process_event]
+    cron_jobs = [
+        cron(detect_anomalies, minute={0, 10, 20, 30, 40, 50}),
+        cron(detect_director_velocity, minute={5, 15, 25, 35, 45, 55}),
+        cron(post_daily_anomaly, hour={9}, minute={0}),
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    max_jobs = 20
-    job_timeout = 60
+    max_jobs = 10
+    job_timeout = 300
     keep_result = 3600
     max_tries = 3

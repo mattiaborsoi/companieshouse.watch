@@ -1,5 +1,7 @@
 # Secrets — never commit
 .env
+.env.local
+.env.*.local
 
 # Data directories (bind-mounted into containers; created locally by `make setup`)
 data/
@@ -22,3 +24,13 @@ node_modules/
 
 # Logs
 *.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import SearchBox from "@/components/ui/SearchBox";
-import { getStatusBar } from "@/lib/db";
+import { getStatusBar, getAnomalies } from "@/lib/db";
 import { timeAgo } from "@/lib/utils";
 
 async function StatusBar() {
@@ -54,6 +54,21 @@ async function StatusBar() {
   }
 }
 
+async function AnomalyNavBadge() {
+  try {
+    const top = await getAnomalies(1);
+    if (!top.length) return null;
+    const count = (await getAnomalies(100)).length;
+    return (
+      <span className="ml-1 inline-flex items-center justify-center rounded font-mono text-[9px] font-bold tabular-nums px-1 py-0.5 bg-red-950 text-red-300 border border-red-800">
+        {count}
+      </span>
+    );
+  } catch {
+    return null;
+  }
+}
+
 export default function NavBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg-base)]/95 backdrop-blur-sm">
@@ -71,10 +86,13 @@ export default function NavBar() {
           <SearchBox />
         </div>
 
-        {/* Nav */}
+        {/* Nav — anomalies first, it's the differentiator */}
         <nav className="hidden items-center gap-1 sm:flex">
+          <Link href="/anomalies" className="nav-link flex items-center">
+            Anomalies
+            <AnomalyNavBadge />
+          </Link>
           <Link href="/feed" className="nav-link">Feed</Link>
-          <Link href="/anomalies" className="nav-link">Anomalies</Link>
           <Link href="/support" className="nav-link" style={{ color: "var(--alert)" }}>Support ♥</Link>
         </nav>
       </div>

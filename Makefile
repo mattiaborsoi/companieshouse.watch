@@ -8,8 +8,8 @@ setup:          ## Create local data directories (run once before first `make up
 
 # ── Stack lifecycle ──────────────────────────────────────────────────────────
 
-up:             ## Start Postgres, Redis, streamer, worker, and web
-	$(COMPOSE) up -d postgres redis streamer worker web
+up:             ## Start Postgres, Redis, streamer, worker, llm-gateway, and web
+	$(COMPOSE) up -d postgres redis streamer worker llm-gateway web
 
 down:           ## Stop and remove containers (data is preserved on disk)
 	$(COMPOSE) down
@@ -42,10 +42,10 @@ test:           ## Run the test suite inside a Docker container
 # ── Build ────────────────────────────────────────────────────────────────────
 
 build:          ## (Re)build all application images
-	$(COMPOSE) build streamer worker web
+	$(COMPOSE) build streamer worker llm-gateway web
 
 build-no-cache: ## Rebuild images from scratch
-	$(COMPOSE) build --no-cache streamer worker web
+	$(COMPOSE) build --no-cache streamer worker llm-gateway web
 
 backfill:       ## Pull ~1000 sample companies from CH REST API into Postgres
 	$(COMPOSE) run --rm worker python -m worker.backfill
@@ -55,4 +55,7 @@ backfill:       ## Pull ~1000 sample companies from CH REST API into Postgres
 ps:             ## Show running containers and health
 	$(COMPOSE) ps
 
-.PHONY: setup up down infra logs logs-streamer logs-worker db-migrate db-shell test build build-no-cache backfill ps
+logs-gateway:   ## Tail llm-gateway logs only
+	$(COMPOSE) logs -f llm-gateway
+
+.PHONY: setup up down infra logs logs-streamer logs-worker logs-gateway db-migrate db-shell test build build-no-cache backfill ps

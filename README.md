@@ -18,7 +18,7 @@ A free, open-source, real-time view of the UK Companies House register — with 
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/yourusername/companieshouse.watch.git
+git clone https://github.com/mattiaborsoi/companieshouse.watch.git
 cd companieshouse.watch
 cp .env.example .env
 # Edit .env with your CH_REST_KEY and CH_STREAM_KEY

@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { getStats, getRecentFilings, getRecentActivity } from "@/lib/db";
+import { getStats, getRecentFilings, getRecentActivity, getAnomalies } from "@/lib/db";
 import LiveTicker from "@/components/ui/LiveTicker";
 import SearchBox from "@/components/ui/SearchBox";
 import Marquee from "@/components/ui/Marquee";
@@ -72,6 +72,79 @@ async function RecentFilingsTable() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ─── Anomaly highlights ───────────────────────────────────
+async function AnomalyHighlights() {
+  const anomalies = await getAnomalies(5);
+  if (!anomalies.length) return null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="section-label">Anomalies detected</h2>
+          <span className="badge border bg-red-950 text-red-300 border-red-800 font-mono font-bold text-[9px]">
+            {anomalies.length}
+          </span>
+        </div>
+        <Link href="/anomalies" className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
+          All anomalies →
+        </Link>
+      </div>
+      <div className="panel overflow-hidden">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Score</th>
+              <th>Subject</th>
+              <th className="text-right hidden sm:table-cell">Companies</th>
+              <th className="text-right">AI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {anomalies.map((a) => {
+              const f = a.features;
+              const subject = a.kind === "director_velocity"
+                ? (f.officer_name ?? "Unknown officer")
+                : ([f.address_line_1, f.locality, f.postcode].filter(Boolean).join(", ") || "—");
+              const scoreColor =
+                a.score >= 70 ? "text-red-300 border-red-700 bg-red-950" :
+                a.score >= 40 ? "text-orange-300 border-orange-700 bg-orange-950" :
+                                "text-yellow-300 border-yellow-700 bg-yellow-950";
+              return (
+                <tr key={a.id}>
+                  <td>
+                    <span className={`badge border font-mono font-bold text-xs ${scoreColor}`}>{a.score}</span>
+                  </td>
+                  <td>
+                    <Link href={`/anomalies/${a.id}`}
+                      className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors">
+                      {subject}
+                    </Link>
+                    <div className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5">
+                      {a.kind === "director_velocity" ? "Director velocity" : "Address cluster"}
+                    </div>
+                  </td>
+                  <td className="text-right font-mono text-sm text-[var(--accent)] hidden sm:table-cell">
+                    {f.company_count}
+                  </td>
+                  <td className="text-right">
+                    {a.aiSummaryOutput
+                      ? <span className="font-mono text-[10px] text-[var(--accent)]">✓</span>
+                      : <span className="font-mono text-[10px] text-[var(--text-muted)]">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="font-mono text-[10px] text-[var(--text-muted)]">
+        Address clusters and director velocity patterns. Updated every 10 min.
+      </p>
     </div>
   );
 }
@@ -181,6 +254,11 @@ export default async function HomePage() {
             </Link>
           </div>
         </div>
+
+        {/* Anomaly highlights — the site's differentiator, shown prominently */}
+        <Suspense fallback={null}>
+          <AnomalyHighlights />
+        </Suspense>
 
         {/* Stats */}
         <Suspense fallback={

@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     log_level: str = "INFO"
 
+    # Social posting (optional — skip if not set)
+    bluesky_handle: str = ""
+    bluesky_app_password: str = ""
+    site_url: str = "https://companieshouse.watch"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

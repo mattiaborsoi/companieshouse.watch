@@ -9,4 +9,7 @@ RUN pip install --no-cache-dir httpx "redis>=5.0" arq "pydantic-settings>=2.4" s
 COPY src/ src/
 RUN pip install --no-cache-dir --no-deps .
 
+RUN useradd -m appuser
+USER appuser
+
 CMD ["python", "-m", "streamer.main"]

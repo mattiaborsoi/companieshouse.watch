@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { searchCompanies, searchChRestApi, searchOfficers } from "@/lib/db";
+import { searchCompanies, searchChRestApi, searchOfficers, chSlugFromLink } from "@/lib/db";
 import SearchBox from "@/components/ui/SearchBox";
 import { companyStatusClass, formatDate } from "@/lib/utils";
 
@@ -181,10 +181,13 @@ export default async function SearchPage({ searchParams }: Props) {
               <p className="font-mono text-xs text-[var(--text-muted)] uppercase tracking-wide">
                 {officerResults.length} result{officerResults.length !== 1 ? "s" : ""}
               </p>
-              {officerResults.map((o) => (
+              {officerResults.map((o) => {
+                const slug = o.chOfficerLink ? chSlugFromLink(o.chOfficerLink) : null;
+                const href = `/officer/${slug ?? o.officerId}`;
+                return (
                 <Link
                   key={o.officerId}
-                  href={`/officer/${o.officerId}`}
+                  href={href}
                   className="block rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 hover:bg-[var(--bg-elevated)] hover:border-[var(--accent)] transition-all group"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -205,7 +208,8 @@ export default async function SearchPage({ searchParams }: Props) {
                     )}
                   </div>
                 </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

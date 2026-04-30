@@ -73,6 +73,24 @@ services:
       DATABASE_URL: postgresql+asyncpg://chwatch:chwatch@postgres:5432/chwatch
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      BLUESKY_HANDLE: ${BLUESKY_HANDLE:-}
+      BLUESKY_APP_PASSWORD: ${BLUESKY_APP_PASSWORD:-}
+      SITE_URL: ${SITE_URL:-https://companieshouse.watch}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  llm-gateway:
+    build:
+      context: ../../apps/llm-gateway
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://chwatch:chwatch@postgres:5432/chwatch
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +104,9 @@ services:
     environment:
       DATABASE_URL: postgresql://chwatch:chwatch@postgres:5432/chwatch
       CH_REST_KEY: ${CH_REST_KEY}
+      LLM_GATEWAY_URL: http://llm-gateway:8000
       NODE_ENV: production
+      NEXT_PUBLIC_SITE_URL: ${SITE_URL:-https://companieshouse.watch}
     ports:
       - "3030:3000"
     depends_on:
