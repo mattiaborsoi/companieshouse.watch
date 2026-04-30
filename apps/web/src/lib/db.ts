@@ -259,28 +259,33 @@ export interface SiblingOfficer {
 }
 
 export async function getSiblingOfficers(
-  officerId: string,
+  id: string,
 ): Promise<SiblingOfficer[]> {
+  // id may be either a UUID (officer_id) or a CH slug. Resolve to UUID first.
+  const isUuid = /^[0-9a-f-]{36}$/i.test(id);
+  const linkPath = `/officers/${id}/appointments`;
   return sql<SiblingOfficer[]>`
-    WITH key AS (
-      SELECT person_match_key FROM public.officers WHERE officer_id = ${officerId}
+    WITH self AS (
+      SELECT officer_id, person_match_key
+      FROM public.officers
+      WHERE ${isUuid ? sql`officer_id = ${id}::uuid` : sql`ch_officer_link = ${linkPath}`}
     )
     SELECT
       o.officer_id::text AS officer_id,
       o.name_full,
       (SELECT COUNT(*) FROM public.appointments a WHERE a.officer_id = o.officer_id)::int AS appointment_count
-    FROM public.officers o, key
-    WHERE o.person_match_key IS NOT NULL
-      AND o.person_match_key = key.person_match_key
-      AND o.officer_id::text != ${officerId}
+    FROM public.officers o, self
+    WHERE self.person_match_key IS NOT NULL
+      AND o.person_match_key = self.person_match_key
+      AND o.officer_id != self.officer_id
       AND NOT EXISTS (
         SELECT 1
         FROM meta.match_corrections mc
         WHERE mc.applied = true
           AND mc.correction_kind = 'not_same_person'
           AND (
-            (mc.officer_id_a::text = ${officerId} AND mc.officer_id_b = o.officer_id) OR
-            (mc.officer_id_b::text = ${officerId} AND mc.officer_id_a = o.officer_id)
+            (mc.officer_id_a = self.officer_id AND mc.officer_id_b = o.officer_id) OR
+            (mc.officer_id_b = self.officer_id AND mc.officer_id_a = o.officer_id)
           )
       )
     ORDER BY appointment_count DESC
