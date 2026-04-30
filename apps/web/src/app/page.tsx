@@ -107,9 +107,10 @@ async function AnomalyHighlights() {
           <tbody>
             {anomalies.map((a) => {
               const f = a.features;
-              const subject = a.kind === "director_velocity"
-                ? (f.officer_name ?? "Unknown officer")
-                : ([f.address_line_1, f.locality, f.postcode].filter(Boolean).join(", ") || "—");
+              const subject =
+                a.kind === "director_velocity" ? (f.officer_name ?? "Unknown officer") :
+                a.kind === "officer_churn"     ? (f.company_name ?? a.detectionKey) :
+                ([f.address_line_1, f.locality, f.postcode].filter(Boolean).join(", ") || "—");
               const scoreColor =
                 a.score >= 70 ? "text-red-300 border-red-700 bg-red-950" :
                 a.score >= 40 ? "text-orange-300 border-orange-700 bg-orange-950" :
@@ -125,7 +126,12 @@ async function AnomalyHighlights() {
                       {subject}
                     </Link>
                     <div className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5">
-                      {a.kind === "director_velocity" ? "Director velocity" : "Address cluster"}
+                      {{
+                        address_cluster:   "Address cluster",
+                        director_velocity: "Director velocity",
+                        officer_churn:     "Officer churn",
+                        bulk_registration: "Bulk registration",
+                      }[a.kind] ?? a.kind}
                     </div>
                   </td>
                   <td className="text-right font-mono text-sm text-[var(--accent)] hidden sm:table-cell">
@@ -143,7 +149,7 @@ async function AnomalyHighlights() {
         </table>
       </div>
       <p className="font-mono text-[10px] text-[var(--text-muted)]">
-        Address clusters and director velocity patterns. Updated every 10 min.
+        Four detection types: address cluster, director velocity, officer churn, bulk registration. Updated every 10 min.
       </p>
     </div>
   );
@@ -240,10 +246,23 @@ export default async function HomePage() {
           </div>
 
           <p className="text-sm text-[var(--text-secondary)] max-w-xl leading-relaxed">
-            Filings, officer appointments, and ownership changes as they stream from Companies House.
+            Filings, officer appointments, and ownership changes as they stream from Companies House —
+            plus automated anomaly detection and AI-generated plain-English explanations of suspicious patterns.
             Free, open-source, no paywall.{" "}
             <Link href="/about" className="text-[var(--accent)] hover:underline underline-offset-2">About this project</Link>
           </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { label: "Live stream",         href: "/feed" },
+              { label: "Anomaly detection",   href: "/anomalies" },
+              { label: "AI explanations",     href: "/about#ai" },
+            ].map(({ label, href }) => (
+              <Link key={label} href={href}
+                className="font-mono text-[10px] uppercase tracking-widest border border-[var(--border)] px-2.5 py-1 rounded text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+                {label}
+              </Link>
+            ))}</div>
 
           <div className="flex items-center gap-3 max-w-lg">
             <div className="flex-1">

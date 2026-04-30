@@ -1,6 +1,10 @@
 # companieshouse.watch
 
-A free, open-source, real-time view of the UK Companies House register — with address-clustering anomaly detection and AI-generated plain-English explanations of suspicious patterns.
+**Live demo → [ch.borsoi.co.uk](https://ch.borsoi.co.uk)**
+
+A free, open-source, real-time view of the UK Companies House register — with automated anomaly detection and AI-generated plain-English explanations of suspicious patterns.
+
+Every filing, officer appointment, and ownership change as it streams from Companies House. Address clusters, director velocity, officer churn, and bulk-registration anomalies detected and scored automatically. AI summaries powered by Anthropic Claude.
 
 **Audience:** Journalists, OSINT researchers, fraud/compliance analysts, curious citizens.
 
