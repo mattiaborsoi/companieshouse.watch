@@ -47,8 +47,10 @@ _LOW_QUALITY_DOMAINS: frozenset[str] = frozenset({
 })
 
 # Some company names — once stripped of LIMITED/LTD/PLC — are too generic to
-# search reliably. Skip GDELT entirely for short names.
-_MIN_QUERYABLE_LENGTH = 12
+# search reliably. The query phrase includes the suffix as a disambiguator,
+# so even short brand names like "TESCO PLC" or "BP PLC" can be searched.
+# Block 1-3 char stripped names ("ABC LIMITED" etc.) which would be noise.
+_MIN_QUERYABLE_LENGTH = 4
 
 _NAME_SUFFIX_RE = re.compile(
     r"\s+(LIMITED|LTD\.?|PLC|LLP|LP|UK LTD|HOLDINGS|GROUP|COMPANY)\.?$",
@@ -258,7 +260,7 @@ _BATCH_SQL = """
     FROM public.companies c
     LEFT JOIN public.company_press_resolutions r ON r.company_number = c.company_number
     WHERE c.status = 'active'
-      AND length(regexp_replace(c.name, '\\s+(LIMITED|LTD|PLC|LLP|LP|HOLDINGS|GROUP|COMPANY)\\.?$', '', 'i')) >= 12
+      AND length(regexp_replace(c.name, '\\s+(LIMITED|LTD|PLC|LLP|LP|HOLDINGS|GROUP|COMPANY)\\.?$', '', 'i')) >= 4
       AND (r.company_number IS NULL OR r.next_search_at < now())
     ORDER BY c.last_event_at DESC NULLS LAST
     LIMIT $1
