@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { filingCategoryLabel, filingCategoryColor, formatDate } from "@/lib/utils";
+import { filingCategoryLabel, filingCategoryColor, formatDate, formatFilingDescription } from "@/lib/utils";
 
 interface FilingEvent {
   transactionId: string;
@@ -158,7 +158,7 @@ export default function FeedClient() {
                     </span>
                   </td>
                   <td className="hidden max-w-xs truncate md:table-cell text-xs text-[var(--text-secondary)]">
-                    {ev.description || ev.type}
+                    {formatFilingDescription(ev.type, ev.description)}
                   </td>
                   <td className="text-right font-mono text-xs text-[var(--text-muted)]">
                     {formatDate(ev.filingDate)}

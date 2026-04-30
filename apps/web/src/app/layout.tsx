@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="mx-auto max-w-6xl flex flex-col sm:flex-row items-center justify-between gap-2">
               <p className="font-mono text-xs text-[var(--text-muted)] text-center sm:text-left">
                 Running on{" "}
-                <span className="text-[var(--text-secondary)]">~£48/mo</span>
+                <span className="text-[var(--text-secondary)]">~£41/mo</span>
                 {" "}in infrastructure.{" "}
                 <span className="text-[var(--text-secondary)]">0 sponsors</span>
                 {" "}covering it so far.
