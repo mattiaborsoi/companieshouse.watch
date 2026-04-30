@@ -47,6 +47,14 @@ _EXCLUDED_DOMAINS: frozenset[str] = frozenset({
     "companycheck.co.uk", "company-check.co.uk", "ukdata.com",
     "companieslist.co.uk", "companysearchesmadesimple.com",
     "dnb.com", "kompass.com", "yell.com", "thomsondirectories.com",
+    "tracxn.com", "pitchbook.com", "owler.com", "zoominfo.com",
+    "rocketreach.co", "signalhire.com", "lusha.com",
+    "creditsafe.com", "creditsafe.co.uk", "experian.com", "experian.co.uk",
+    "ukbusinessforums.co.uk", "businessmagnet.co.uk", "scoot.co.uk",
+    "freshbusinessthinking.com", "checkmycompany.co.uk",
+    "northdata.com", "bizdb.co.uk", "corpwatch.org",
+    "alfabank.com",  # appears in some search results
+    "orpha.net",     # rare-disease registry, not company sites
     # Job boards
     "indeed.com", "glassdoor.com", "reed.co.uk", "totaljobs.com",
     # App stores
@@ -83,14 +91,51 @@ def _short_name(name: str) -> str:
     return _RE_NAME_SUFFIXES.sub("", name).strip()
 
 
-def _score_match(page_text_lower: str, company_name: str, company_number: str) -> str:
+def _domain_matches_name(domain: str, company_name: str) -> bool:
+    """True if the domain's root looks related to the company name.
+
+    Used as a backstop for medium-confidence matches: a real corporate website
+    typically uses a domain derived from the company name. An aggregator's
+    domain (tracxn.com, crunchbase.com, etc.) does not.
+    """
+    import re
+    # Strip TLD: take the second-to-last component.
+    parts = [p for p in domain.lower().split(".") if p]
+    if len(parts) < 2:
+        return False
+    domain_root = parts[-2] if parts[-1] not in ("co", "com") or len(parts) < 3 else parts[-3]
+    domain_alpha = re.sub(r"[^a-z]", "", domain_root)
+    name_alpha = re.sub(r"[^a-z]", "", _short_name(company_name).lower())
+    if not domain_alpha or not name_alpha or len(domain_alpha) < 3:
+        return False
+    if domain_alpha in name_alpha or name_alpha in domain_alpha:
+        return True
+    # Token overlap (e.g. "monzo" in "monzo bank")
+    name_tokens = {t for t in re.findall(r"[a-z]{3,}", _short_name(company_name).lower())}
+    if domain_alpha in name_tokens:
+        return True
+    return False
+
+
+def _score_match(
+    page_text_lower: str,
+    company_name: str,
+    company_number: str,
+    final_url: str,
+) -> str:
     short = _short_name(company_name).lower()
-    name_match = short and short in page_text_lower
+    name_match = bool(short) and short in page_text_lower
     number_match = company_number.lower() in page_text_lower
+    domain = urlparse(final_url).netloc
+    domain_match = _domain_matches_name(domain, company_name)
+
     if name_match and number_match:
         return _HIGH
-    if name_match:
+    # Medium = name on page AND domain looks like company name.
+    # Without domain-match we'd accept aggregators; without name-match we'd accept random pages.
+    if name_match and domain_match:
         return _MEDIUM
+    # Domain-only match is weak — only accept if the page has the name too.
     return _LOW
 
 
@@ -151,7 +196,7 @@ async def resolve_company_identity(
             bound.info("excluded_after_redirect", url=c.url, final_url=page.final_url)
             continue
 
-        confidence = _score_match(page.body_text_lower, name, company_number)
+        confidence = _score_match(page.body_text_lower, name, company_number, page.final_url)
         bound.info(
             "candidate_fetched",
             url=c.url,
