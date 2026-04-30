@@ -14,7 +14,7 @@ import asyncpg
 import structlog
 
 from .db import get_pool
-from .anomaly_detector import FORMATION_AGENT_POSTCODES, FORMATION_AGENT_COUNT_THRESHOLD
+from .anomaly_detector import FORMATION_AGENT_COUNT_THRESHOLD, load_known_addresses
 
 log = structlog.get_logger()
 
@@ -106,6 +106,7 @@ async def detect_bulk_registration(ctx: dict) -> None:
     pool: asyncpg.Pool = ctx["pool"]
     bound = log.bind(job="detect_bulk_registration")
 
+    known_addresses = await load_known_addresses(pool)
     rows = await pool.fetch(_BULK_SQL, MIN_COMPANIES_PER_DAY)
     flagged: list[str] = []
     upserted = 0
@@ -119,12 +120,14 @@ async def detect_bulk_registration(ctx: dict) -> None:
 
                 detection_key: str = row["detection_key"]
                 postcode: str = (row["postcode"] or "").upper().strip()
+                known = known_addresses.get(postcode)
                 is_formation_agent = (
-                    postcode in FORMATION_AGENT_POSTCODES
+                    known is not None
                     or row["companies_on_day"] >= FORMATION_AGENT_COUNT_THRESHOLD
                 )
                 if is_formation_agent:
-                    score = min(score, 20)
+                    cap = known["score_cap"] if known else 20
+                    score = min(score, cap)
 
                 flagged.append(detection_key)
 

@@ -13,7 +13,7 @@ import asyncpg
 import structlog
 
 from .db import get_pool
-from .anomaly_detector import FORMATION_AGENT_POSTCODES, FORMATION_AGENT_COUNT_THRESHOLD
+from .anomaly_detector import load_known_addresses
 
 log = structlog.get_logger()
 
@@ -110,6 +110,7 @@ async def detect_officer_churn(ctx: dict) -> None:
     pool: asyncpg.Pool = ctx["pool"]
     bound = log.bind(job="detect_officer_churn")
 
+    known_addresses = await load_known_addresses(pool)
     rows = await pool.fetch(_CHURN_SQL, MIN_CHURN_EVENTS)
     flagged: list[str] = []
     upserted = 0
@@ -123,9 +124,10 @@ async def detect_officer_churn(ctx: dict) -> None:
 
                 detection_key: str = row["detection_key"]
                 postcode: str = (row["postcode"] or "").upper().strip()
-                is_formation_agent = postcode in FORMATION_AGENT_POSTCODES
+                known = known_addresses.get(postcode)
+                is_formation_agent = known is not None
                 if is_formation_agent:
-                    score = min(score, 20)
+                    score = min(score, known["score_cap"])
 
                 flagged.append(detection_key)
 
