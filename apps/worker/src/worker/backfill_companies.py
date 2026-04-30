@@ -44,12 +44,24 @@ def _client() -> httpx.AsyncClient:
     )
 
 
-async def _get(client: httpx.AsyncClient, path: str) -> dict | None:
+async def _get(client: httpx.AsyncClient, path: str, _retries_left: int = 3) -> dict | None:
     try:
         resp = await client.get(path)
         await asyncio.sleep(RATE_LIMIT_DELAY)
         if resp.status_code == 404:
             return None
+        if resp.status_code == 429:
+            # Respect X-Ratelimit-Reset and retry once it expires.
+            if _retries_left <= 0:
+                log.warning("ch_rest_429_giving_up", path=path)
+                return None
+            import time
+            reset_ts = int(resp.headers.get("X-Ratelimit-Reset", "0"))
+            wait_s = max(2, reset_ts - int(time.time()) + 2)
+            wait_s = min(wait_s, 305)  # cap at 5 min so we don't block forever
+            log.info("ch_rest_429_waiting", path=path, wait_s=wait_s)
+            await asyncio.sleep(wait_s)
+            return await _get(client, path, _retries_left=_retries_left - 1)
         resp.raise_for_status()
         return resp.json()
     except httpx.HTTPStatusError as exc:
