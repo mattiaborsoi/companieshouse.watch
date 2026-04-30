@@ -9,6 +9,7 @@ import {
   getCompanyOfficers,
   getCompanyPscs,
   getCompanyIdentity,
+  getDirectorContinuity,
   bumpIdentityResolutionPriority,
   getCompanyFromChRest,
   getOfficersFromChRest,
@@ -22,6 +23,7 @@ import {
   type ChRestOfficer,
   type ChRestPsc,
   type CompanyIdentity,
+  type DirectorContinuityRow,
 } from "@/lib/db";
 import {
   formatDate,
@@ -71,12 +73,13 @@ export default async function CompanyPage({ params }: Props) {
 
   if (localCompany) {
     const addrHash = localCompany.registeredAddressHash ?? undefined;
-    const [filings, officers, pscs, clusterAnomaly, identity] = await Promise.all([
+    const [filings, officers, pscs, clusterAnomaly, identity, continuity] = await Promise.all([
       getCompanyFilings(cn),
       getCompanyOfficers(cn),
       getCompanyPscs(cn),
       addrHash ? getAnomalyForAddress(addrHash) : Promise.resolve(null),
       getCompanyIdentity(cn),
+      getDirectorContinuity(cn, 50),
     ]);
     // For active companies without identity yet, prioritise resolution at
     // the next cron tick. Fire-and-forget; never blocks page render.
@@ -99,6 +102,7 @@ export default async function CompanyPage({ params }: Props) {
         fromRest={false}
         clusterAnomaly={clusterAnomaly}
         identity={identity}
+        continuity={continuity}
       />
     );
   }
@@ -144,6 +148,7 @@ function CompanyProfile({
   fromRest,
   clusterAnomaly = null,
   identity = null,
+  continuity = [],
 }: {
   company: AnyCompany;
   filings: Awaited<ReturnType<typeof getCompanyFilings>>;
@@ -155,6 +160,7 @@ function CompanyProfile({
   fromRest: boolean;
   clusterAnomaly?: { id: string; score: number } | null;
   identity?: CompanyIdentity | null;
+  continuity?: DirectorContinuityRow[];
 }) {
   const addr = company.registeredAddress as Record<string, string>;
   const addressLines = [
@@ -291,6 +297,9 @@ function CompanyProfile({
         <LocalOfficersSection active={activeOfficers} former={formerOfficers} />
       )}
 
+      {/* Directors also run — Phase 2 */}
+      {continuity.length > 0 && <DirectorsAlsoRunSection rows={continuity} />}
+
       {/* PSCs */}
       {fromRest ? (
         <RestPscsSection pscs={restPscs} />
@@ -298,6 +307,96 @@ function CompanyProfile({
         <LocalPscsSection pscs={pscs} />
       )}
     </div>
+  );
+}
+
+function DirectorsAlsoRunSection({ rows }: { rows: DirectorContinuityRow[] }) {
+  // Group by viaOfficerId — show each director with their other companies
+  type Group = {
+    viaName: string;
+    viaOfficerId: string;
+    companies: DirectorContinuityRow[];
+  };
+  const groups = new Map<string, Group>();
+  for (const row of rows) {
+    const g = groups.get(row.viaOfficerId);
+    if (g) {
+      g.companies.push(row);
+    } else {
+      groups.set(row.viaOfficerId, {
+        viaName: row.viaName,
+        viaOfficerId: row.viaOfficerId,
+        companies: [row],
+      });
+    }
+  }
+  const ordered = [...groups.values()].sort(
+    (a, b) => b.companies.length - a.companies.length,
+  );
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        Directors also run · {rows.length}
+      </h2>
+      <div className="space-y-4">
+        {ordered.map((g) => {
+          const visible = g.companies.slice(0, 5);
+          const more = g.companies.length - visible.length;
+          return (
+            <div key={g.viaOfficerId} className="rounded-md border border-[var(--border)] bg-[var(--bg-surface)]"
+                 style={{ boxShadow: "var(--panel-shadow)" }}>
+              <div className="px-4 py-2 border-b border-[var(--border-subtle)]">
+                <Link
+                  href={`/officer/${g.viaOfficerId}`}
+                  className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
+                >
+                  {g.viaName}
+                </Link>
+                <span className="ml-2 font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+                  {g.companies.length} other {g.companies.length === 1 ? "company" : "companies"}
+                </span>
+              </div>
+              <ul className="divide-y divide-[var(--border-subtle)]">
+                {visible.map((c) => (
+                  <li key={`${c.otherOfficerId}-${c.companyNumber}`}
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-[var(--bg-elevated)] transition-colors">
+                    <Link href={`/c/${c.companyNumber}`}
+                          className="flex-1 min-w-0 text-sm text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors truncate">
+                      {c.companyName}
+                    </Link>
+                    <span className={`badge border text-[9px] shrink-0 ${companyStatusClass(c.companyStatus)}`}>
+                      {c.companyStatus}
+                    </span>
+                    <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0 hidden sm:inline">
+                      {c.role}{c.appointedOn ? ` · ${formatDate(c.appointedOn)}` : ""}
+                      {c.resignedOn ? " · resigned" : ""}
+                    </span>
+                  </li>
+                ))}
+                {more > 0 && (
+                  <li className="px-4 py-2">
+                    <Link href={`/officer/${g.viaOfficerId}`}
+                          className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
+                      View all {g.companies.length} →
+                    </Link>
+                  </li>
+                )}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+      <p className="font-mono text-[10px] text-[var(--text-muted)] leading-relaxed">
+        Matched by name and date of birth (year/month). Possible mismatches —{" "}
+        <a
+          href="mailto:takedowns@borsoi.co.uk?subject=Incorrect%20director%20match"
+          className="hover:text-[var(--accent)] transition-colors underline underline-offset-2"
+        >
+          report incorrect link
+        </a>.
+      </p>
+    </section>
   );
 }
 

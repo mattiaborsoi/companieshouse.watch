@@ -7,7 +7,9 @@ import {
   getOfficer,
   getOfficerAppointments,
   getOfficerFromChRest,
+  getSiblingOfficers,
   type ChRestOfficerProfile,
+  type SiblingOfficer,
 } from "@/lib/db";
 import { formatDate, companyStatusClass } from "@/lib/utils";
 
@@ -26,16 +28,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function OfficerPage({ params }: Props) {
   const { id } = await params;
-  const [officer, appointments] = await Promise.all([
+  const [officer, appointments, siblings] = await Promise.all([
     getOfficer(id),
     getOfficerAppointments(id),
+    getSiblingOfficers(id),
   ]);
 
   if (officer) {
     // Local DB path
     const active = appointments.filter((a) => !a.resignedOn);
     const former = appointments.filter((a) => a.resignedOn);
-    return <LocalOfficerProfile officer={officer} active={active} former={former} />;
+    return <LocalOfficerProfile officer={officer} active={active} former={former} siblings={siblings} />;
   }
 
   // CH REST fallback for officers not yet in local DB
@@ -51,10 +54,12 @@ function LocalOfficerProfile({
   officer,
   active,
   former,
+  siblings,
 }: {
   officer: Awaited<ReturnType<typeof getOfficer>>;
   active: Awaited<ReturnType<typeof getOfficerAppointments>>;
   former: Awaited<ReturnType<typeof getOfficerAppointments>>;
+  siblings: SiblingOfficer[];
 }) {
   if (!officer) return null;
   return (
@@ -87,7 +92,47 @@ function LocalOfficerProfile({
           resignedOn: a.resignedOn ? String(a.resignedOn) : null,
         }))}
       />
+      {siblings.length > 0 && <SiblingsSection siblings={siblings} />}
     </div>
+  );
+}
+
+function SiblingsSection({ siblings }: { siblings: SiblingOfficer[] }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        Likely the same person · {siblings.length} other officer record{siblings.length === 1 ? "" : "s"}
+      </h2>
+      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+        Companies House issues a separate officer record for each appointment, so a single
+        person can hold many officer IDs. These records share the same name and date of birth
+        (year + month) and likely refer to the same individual.
+      </p>
+      <div className="rounded-md border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]"
+           style={{ boxShadow: "var(--panel-shadow)" }}>
+        {siblings.map((s) => (
+          <Link
+            key={s.officerId}
+            href={`/officer/${s.officerId}`}
+            className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg-elevated)] transition-colors"
+          >
+            <span className="flex-1 min-w-0 text-sm text-[var(--text-primary)] truncate">{s.nameFull}</span>
+            <span className="font-mono text-[10px] text-[var(--text-muted)] shrink-0">
+              {s.appointmentCount} appointment{s.appointmentCount === 1 ? "" : "s"}
+            </span>
+          </Link>
+        ))}
+      </div>
+      <p className="font-mono text-[10px] text-[var(--text-muted)] leading-relaxed">
+        Matched by name and date of birth (year/month).{" "}
+        <a
+          href="mailto:takedowns@borsoi.co.uk?subject=Incorrect%20officer%20match"
+          className="hover:text-[var(--accent)] transition-colors underline underline-offset-2"
+        >
+          report incorrect link
+        </a>.
+      </p>
+    </section>
   );
 }
 

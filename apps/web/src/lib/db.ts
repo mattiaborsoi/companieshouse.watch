@@ -177,6 +177,117 @@ export async function getCompanyIdentity(
   return rows[0] ?? null;
 }
 
+// Phase 2: director continuity ("Directors also run")
+// ──────────────────────────────────────────────────────────────────────
+//
+// For a given company, find other companies that the same directors are
+// also involved with. Matching uses the person_match_key generated column
+// (lower(forename) | lower(surname) | dob_year | dob_month) — DoB is the
+// disambiguator. Officers without DoB are not matched (we genuinely can't
+// tell if it's the same person).
+//
+// User-reported false positives in meta.match_corrections are excluded.
+
+export interface DirectorContinuityRow {
+  viaOfficerId: string;       // the officer of THIS company
+  viaName: string;            // their name
+  otherOfficerId: string;     // the other officer record (likely same person)
+  companyNumber: string;
+  companyName: string;
+  companyStatus: string;
+  role: string;
+  appointedOn: string | null;
+  resignedOn: string | null;
+}
+
+export async function getDirectorContinuity(
+  companyNumber: string,
+  limit = 50,
+): Promise<DirectorContinuityRow[]> {
+  return sql<DirectorContinuityRow[]>`
+    WITH this_company_officers AS (
+      SELECT DISTINCT
+        o.officer_id::text AS officer_id,
+        o.name_full,
+        o.person_match_key
+      FROM public.appointments a
+      JOIN public.officers o ON o.officer_id = a.officer_id
+      WHERE a.company_number = ${companyNumber}
+        AND a.resigned_on IS NULL
+        AND o.person_match_key IS NOT NULL
+    )
+    SELECT
+      tco.officer_id   AS via_officer_id,
+      tco.name_full    AS via_name,
+      o2.officer_id::text AS other_officer_id,
+      c.company_number,
+      c.name           AS company_name,
+      c.status         AS company_status,
+      a.role,
+      a.appointed_on,
+      a.resigned_on
+    FROM this_company_officers tco
+    JOIN public.officers o2
+      ON o2.person_match_key = tco.person_match_key
+     AND o2.officer_id::text != tco.officer_id
+    JOIN public.appointments a
+      ON a.officer_id = o2.officer_id
+    JOIN public.companies c
+      ON c.company_number = a.company_number
+    WHERE c.company_number != ${companyNumber}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM meta.match_corrections mc
+        WHERE mc.applied = true
+          AND mc.correction_kind = 'not_same_person'
+          AND ((mc.officer_id_a::text = tco.officer_id AND mc.officer_id_b = o2.officer_id)
+            OR (mc.officer_id_b::text = tco.officer_id AND mc.officer_id_a = o2.officer_id))
+      )
+    ORDER BY a.resigned_on IS NULL DESC, a.appointed_on DESC NULLS LAST
+    LIMIT ${limit}
+  `;
+}
+
+// For an officer profile: find other officer records (different officer_id)
+// that share this person's match key — i.e. likely the same human across
+// different appointments-to-different companies (CH issues a fresh officer_id
+// per appointment, so we use name+DoB to cluster).
+export interface SiblingOfficer {
+  officerId: string;
+  nameFull: string;
+  appointmentCount: number;
+}
+
+export async function getSiblingOfficers(
+  officerId: string,
+): Promise<SiblingOfficer[]> {
+  return sql<SiblingOfficer[]>`
+    WITH key AS (
+      SELECT person_match_key FROM public.officers WHERE officer_id = ${officerId}
+    )
+    SELECT
+      o.officer_id::text AS officer_id,
+      o.name_full,
+      (SELECT COUNT(*) FROM public.appointments a WHERE a.officer_id = o.officer_id)::int AS appointment_count
+    FROM public.officers o, key
+    WHERE o.person_match_key IS NOT NULL
+      AND o.person_match_key = key.person_match_key
+      AND o.officer_id::text != ${officerId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM meta.match_corrections mc
+        WHERE mc.applied = true
+          AND mc.correction_kind = 'not_same_person'
+          AND (
+            (mc.officer_id_a::text = ${officerId} AND mc.officer_id_b = o.officer_id) OR
+            (mc.officer_id_b::text = ${officerId} AND mc.officer_id_a = o.officer_id)
+          )
+      )
+    ORDER BY appointment_count DESC
+    LIMIT 20
+  `;
+}
+
 // Fire-and-forget: when a profile page is viewed, ensure there's a row in
 // company_identity with next_check_at = now() so the resolver picks it up
 // at the next cron tick. Safe to call repeatedly — the WHERE clause keeps
