@@ -690,6 +690,7 @@ export async function getOfficerFromChRest(slug: string): Promise<ChRestOfficerP
   if (!client) return null;
   try {
     const res = await client(`/officers/${slug}/appointments?items_per_page=50`);
+    if (res.status === 429) throw new ChRestRateLimitError();
     if (!res.ok) return null;
     const d = await res.json();
     if (!d.items?.length) return null;
@@ -724,7 +725,8 @@ export async function getOfficerFromChRest(slug: string): Promise<ChRestOfficerP
         };
       }),
     };
-  } catch {
+  } catch (e) {
+    if (e instanceof ChRestRateLimitError) throw e;
     return null;
   }
 }

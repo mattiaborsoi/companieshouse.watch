@@ -8,6 +8,7 @@ import {
   getOfficerAppointments,
   getOfficerFromChRest,
   getSiblingOfficers,
+  ChRestRateLimitError,
   type ChRestOfficerProfile,
   type SiblingOfficer,
 } from "@/lib/db";
@@ -21,8 +22,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const officer = await getOfficer(id);
   if (officer) return { title: officer.nameFull };
-  const rest = await getOfficerFromChRest(id);
-  if (rest) return { title: rest.nameFull };
+  try {
+    const rest = await getOfficerFromChRest(id);
+    if (rest) return { title: rest.nameFull };
+  } catch {
+    // 429 from CH REST during metadata generation — fall back to a generic title
+    return { title: "Officer" };
+  }
   return { title: "Officer not found" };
 }
 
@@ -42,10 +48,44 @@ export default async function OfficerPage({ params }: Props) {
   }
 
   // CH REST fallback for officers not yet in local DB
-  const restProfile = await getOfficerFromChRest(id);
+  let restProfile: ChRestOfficerProfile | null;
+  try {
+    restProfile = await getOfficerFromChRest(id);
+  } catch (e) {
+    if (e instanceof ChRestRateLimitError) {
+      return <OfficerRateLimitedFallback officerId={id} />;
+    }
+    throw e;
+  }
   if (!restProfile) notFound();
 
   return <RestOfficerProfile profile={restProfile} />;
+}
+
+function OfficerRateLimitedFallback({ officerId }: { officerId: string }) {
+  return (
+    <div className="mx-auto max-w-xl px-4 py-16 space-y-5 text-center">
+      <p className="section-label mx-auto">Companies House rate-limited</p>
+      <h1 className="font-mono text-2xl font-bold text-[var(--text-primary)]">
+        Couldn&apos;t reach Companies House right now
+      </h1>
+      <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+        This officer isn&apos;t in our local database yet, and the Companies House API has
+        temporarily rate-limited us. The page will work in a moment — please refresh.
+      </p>
+      <div className="pt-2 flex flex-wrap justify-center gap-3">
+        <a
+          href={`https://find-and-update.company-information.service.gov.uk/officers/${officerId}/appointments`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost text-xs"
+        >
+          View on Companies House ↗
+        </a>
+        <Link href="/" className="btn-ghost text-xs">← Home</Link>
+      </div>
+    </div>
+  );
 }
 
 // ─── Local DB profile ──────────────────────────────────────
