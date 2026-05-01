@@ -35,7 +35,7 @@ jobs:
       - name: npm audit (full report, never fails)
         if: always()
         run: npm audit --json > audit.json || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: npm-audit-web
