@@ -11,7 +11,6 @@ from datetime import datetime
 
 import asyncpg
 import structlog
-from arq import Retry
 from arq.connections import RedisSettings
 
 from arq.cron import cron
@@ -20,11 +19,12 @@ from .anomaly_detector import detect_anomalies
 from .director_velocity import detect_director_velocity
 from .officer_churn import detect_officer_churn
 from .bulk_registration import detect_bulk_registration
+from .deferred import defer_event, drain_for_company
+from .hydrator import hydrate_pending_companies
 from .identity_resolver import resolve_batch as resolve_identity_batch
 from .pattern_detector import detect_patterns
 from .press_resolver import resolve_press_batch
 from .social_poster import post_daily_anomaly
-from .ch_rest import get_company
 from .config import settings
 from .db import close_pool, get_pool
 from .upserts import (
@@ -38,9 +38,6 @@ log = structlog.get_logger()
 
 _COMPANY_NUMBER_RE = re.compile(r"/company/([^/]+)/")
 
-# How long to wait before retrying a job whose company hasn't appeared yet (seconds)
-_COMPANY_NOT_FOUND_RETRY_DELAY = 30
-
 
 def _extract_company_number(event: dict) -> str | None:
     """Try data.company_number first; fall back to parsing resource_uri."""
@@ -53,22 +50,18 @@ def _extract_company_number(event: dict) -> str | None:
     return m.group(1) if m else None
 
 
-async def _ensure_company(pool: asyncpg.Pool, company_number: str) -> bool:
-    """Return True if the company exists; hydrate via REST if it doesn't."""
+async def _company_exists(pool: asyncpg.Pool, company_number: str) -> bool:
+    """Cheap local check — does the company live in our DB yet?
+
+    Phase C: we never call CH REST inline anymore. If the company doesn't
+    exist locally, the caller should `defer_event` and the hydrator cron
+    will pick the company up shortly.
+    """
     exists = await pool.fetchval(
         "SELECT 1 FROM public.companies WHERE company_number = $1",
         company_number,
     )
-    if exists:
-        return True
-
-    data = await get_company(company_number)
-    if data is None:
-        return False
-
-    async with pool.acquire() as conn:
-        await upsert_company(conn, data)
-    return True
+    return bool(exists)
 
 
 async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
@@ -132,31 +125,34 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
 
             if resource_kind == "company-profile":
                 await upsert_company(conn, data)
+                # New / updated company — try to drain any events that were
+                # waiting for it. Best-effort, doesn't block this job.
+                if cn:
+                    try:
+                        await drain_for_company(pool, cn)
+                    except Exception as e:
+                        bound_log.warning("drain_after_profile_failed", error=str(e))
 
             elif resource_kind == "filing-history":
-                if cn and not await _ensure_company(pool, cn):
-                    # Company not in REST API yet — retry after a delay (max 3 times)
-                    if job_try < 3:
-                        raise Retry(defer=_COMPANY_NOT_FOUND_RETRY_DELAY * job_try)
-                    bound_log.warning("company_not_found_giving_up", company_number=cn)
-                    return
-                await upsert_filing(conn, data)
+                if cn and not await _company_exists(pool, cn):
+                    await defer_event(conn, cn, resource_kind, resource_id, event)
+                    bound_log.debug("event_deferred", company_number=cn)
+                else:
+                    await upsert_filing(conn, data)
 
             elif resource_kind == "company-officers":
-                if cn and not await _ensure_company(pool, cn):
-                    if job_try < 3:
-                        raise Retry(defer=_COMPANY_NOT_FOUND_RETRY_DELAY * job_try)
-                    bound_log.warning("company_not_found_giving_up", company_number=cn)
-                    return
-                await upsert_officer_appointment(conn, data)
+                if cn and not await _company_exists(pool, cn):
+                    await defer_event(conn, cn, resource_kind, resource_id, event)
+                    bound_log.debug("event_deferred", company_number=cn)
+                else:
+                    await upsert_officer_appointment(conn, data)
 
             elif resource_kind.startswith("company-psc"):
-                if cn and not await _ensure_company(pool, cn):
-                    if job_try < 3:
-                        raise Retry(defer=_COMPANY_NOT_FOUND_RETRY_DELAY * job_try)
-                    bound_log.warning("company_not_found_giving_up", company_number=cn)
-                    return
-                await upsert_psc(conn, data)
+                if cn and not await _company_exists(pool, cn):
+                    await defer_event(conn, cn, resource_kind, resource_id, event)
+                    bound_log.debug("event_deferred", company_number=cn)
+                else:
+                    await upsert_psc(conn, data)
 
             else:
                 bound_log.debug("unhandled_resource_kind")
@@ -167,10 +163,6 @@ async def process_event(ctx: dict, stream_name: str, event: dict) -> None:
                     event_row_id,
                 )
             bound_log.debug("processed")
-
-        except Retry:
-            bound_log.info("retrying_company_not_found_yet", company_number=cn)
-            raise
 
         except Exception as exc:
             if event_row_id:
@@ -205,6 +197,10 @@ class WorkerSettings:
         cron(detect_director_velocity, minute={5, 15, 25, 35, 45, 55}),
         cron(detect_officer_churn,    minute={2, 12, 22, 32, 42, 52}),
         cron(detect_bulk_registration, minute={7, 17, 27, 37, 47, 57}),
+        # Phase C: hydrate companies for which deferred events are waiting.
+        # Every 2 min, batch of 30 = 900 CH calls/hour worst-case (well under 2/sec
+        # CH limit). Drains naturally when there are no pending hydrations.
+        cron(hydrate_pending_companies, minute={0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58}),
         # Phase 1: company identity — Brave free tier = 2000/month = ~67/day budget.
         # Hourly tick (24/day) * batch of 2 = 48 Brave calls/day = ~1440/month, leaving
         # ~28% headroom for retries/failures.
