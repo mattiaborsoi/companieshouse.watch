@@ -36,7 +36,14 @@ async function StatusBar() {
           {s.lastEventAt && (() => {
             const ageMs = Date.now() - new Date(s.lastEventAt).getTime();
             const ageMins = ageMs / 60_000;
-            const timeStr = new Date(s.lastEventAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+            // Pin to Europe/London — server runs in UTC, but Companies House
+            // is a UK register and visitors expect UK local time (BST in
+            // summer, GMT in winter).
+            const timeStr = new Date(s.lastEventAt).toLocaleTimeString("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "Europe/London",
+            });
             const color = ageMins < 5 ? "text-[var(--live)]" : ageMins < 30 ? "text-[var(--text-secondary)]" : "text-amber-400";
             return (
               <>

@@ -196,7 +196,10 @@ async function ActivityFeed() {
             </div>
             <span className="shrink-0 font-mono text-[10px] text-[var(--text-muted)] whitespace-nowrap">
               {ev.publishedAt
-                ? new Date(ev.publishedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                ? new Date(ev.publishedAt).toLocaleTimeString("en-GB", {
+                    hour: "2-digit", minute: "2-digit",
+                    timeZone: "Europe/London",
+                  })
                 : "—"}
             </span>
           </div>
