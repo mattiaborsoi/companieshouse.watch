@@ -1,4 +1,6 @@
-export const dynamic = "force-dynamic";
+// Cache the rendered page for 60s. Officer profiles change less often
+// than company profiles; 60s staleness is invisible.
+export const revalidate = 60;
 
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";

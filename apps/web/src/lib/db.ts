@@ -507,7 +507,7 @@ export async function searchChRestOfficers(query: string): Promise<{
 }[]> {
   const r = await chCachedGet(
     `/search/officers?q=${encodeURIComponent(query)}&items_per_page=10`,
-    120,
+    3600, // 1 hour — search index changes daily at most
   );
   if (!r.ok) return [];
   const data = r.data as { items?: Record<string, unknown>[] };
@@ -539,7 +539,7 @@ export async function searchChRestApi(query: string): Promise<{
 }[]> {
   const r = await chCachedGet(
     `/search/companies?q=${encodeURIComponent(query)}&items_per_page=10`,
-    120,
+    3600, // 1 hour — search index changes daily at most
   );
   if (!r.ok) return [];
   const data = r.data as { items?: Record<string, unknown>[] };
@@ -584,8 +584,10 @@ function envelope(r: { status: number; ok: boolean; data: unknown }): ChClientRe
 
 function chRestClient() {
   if (!process.env.CH_REST_KEY) return null;
+  // Use chCachedGet's 24h default — CH data changes slowly. The streamer
+  // separately overwrites our local DB live as new events arrive.
   return (path: string): Promise<ChClientResponse> =>
-    chCachedGet(path, 600).then(envelope);
+    chCachedGet(path).then(envelope);
 }
 
 export interface ChRestCompany {

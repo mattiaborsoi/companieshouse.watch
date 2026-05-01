@@ -34,11 +34,10 @@ export async function GET(
     status: 200,
     headers: {
       "content-type": contentType,
-      // 7-day immutable cache; the resolver re-fetches periodically and
-      // updates the row, so a fresh request will get the new bytes after
-      // the cache expires. The URL itself doesn't change per company so
-      // we don't need cache-busting via the path.
-      "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
+      // 7-day fresh, 30-day stale-while-revalidate. The resolver re-fetches
+      // every 60-180 days, so favicon bytes are effectively immutable for
+      // the whole 7-day window.
+      "cache-control": "public, max-age=604800, stale-while-revalidate=2592000",
       "x-content-type-options": "nosniff",
       "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
     },

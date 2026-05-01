@@ -52,17 +52,24 @@ interface CachedPayload {
 
 const CACHE_PREFIX = "ch:rest:";
 
+// 24 hours. CH data changes slowly relative to our streamer's live ingestion,
+// and the cache only matters for cold-cache profiles (companies not yet in
+// our local DB). The streamer overwrites local DB live as new events arrive.
+const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
+// 404 = "this company number doesn't exist". Stable forever in practice.
+const NEGATIVE_TTL_SECONDS = 30 * 24 * 60 * 60;
+
 /**
  * GET a CH REST path with Redis caching. Returns a Response-like envelope.
  *
- * - 200 responses are cached for `ttlSeconds` (default 600 = 10 min).
- * - 404 responses are cached for `ttlSeconds * 6` (negative caching — they're
- *   stable, no point re-asking).
+ * - 200 responses are cached for `ttlSeconds` (default 24 h).
+ * - 404 responses are cached for 30 days (negative cache — non-existent
+ *   company numbers stay non-existent).
  * - 429 / 5xx are NOT cached so they recover when CH does.
  */
 export async function chCachedGet(
   path: string,
-  ttlSeconds: number = 600,
+  ttlSeconds: number = DEFAULT_TTL_SECONDS,
 ): Promise<ChCachedResponse> {
   const key = process.env.CH_REST_KEY;
   if (!key) return { ok: false, status: 0, data: null };
@@ -111,7 +118,7 @@ export async function chCachedGet(
   // 3. Cache the result, but only the safe outcomes
   if (redis && (resp.ok || resp.status === 404)) {
     const payload: CachedPayload = { status: resp.status, data };
-    const ttl = resp.status === 404 ? ttlSeconds * 6 : ttlSeconds;
+    const ttl = resp.status === 404 ? NEGATIVE_TTL_SECONDS : ttlSeconds;
     redis
       .set(cacheKey, JSON.stringify(payload), "EX", ttl)
       .catch(() => {

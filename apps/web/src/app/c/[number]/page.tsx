@@ -1,4 +1,7 @@
-export const dynamic = "force-dynamic";
+// Cache the rendered page for 60s. The streamer overwrites the underlying
+// data in Postgres live, so worst-case staleness is 60s — invisible to users
+// given CH bursts every few minutes anyway.
+export const revalidate = 60;
 
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -375,6 +378,45 @@ function CompanyProfile({
       ) : (
         <LocalPscsSection pscs={pscs} />
       )}
+
+      <DataFreshnessFooter company={company} fromRest={fromRest} />
+    </div>
+  );
+}
+
+function DataFreshnessFooter({ company, fromRest }: { company: AnyCompany; fromRest: boolean }) {
+  // For local companies we have last_event_at — the timestamp of the most
+  // recent stream event we processed for this company. For REST-fallback
+  // companies, there's already a "fetched live" banner at the top.
+  const lastEventAt = (company as Company).lastEventAt;
+  if (fromRest || !lastEventAt) return null;
+
+  const updated = new Date(lastEventAt);
+  const ageMs = Date.now() - updated.getTime();
+  const ageMinutes = Math.floor(ageMs / 60_000);
+  const ageHours = Math.floor(ageMs / 3_600_000);
+  const ageDays = Math.floor(ageMs / 86_400_000);
+  const human =
+    ageMinutes < 5  ? "just now" :
+    ageMinutes < 60 ? `${ageMinutes} minutes ago` :
+    ageHours   < 24 ? `${ageHours} hour${ageHours === 1 ? "" : "s"} ago` :
+                      `${ageDays} day${ageDays === 1 ? "" : "s"} ago`;
+
+  const absolute = updated.toLocaleString("en-GB", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+  });
+
+  return (
+    <div className="border-t border-[var(--border-subtle)] pt-4 mt-4">
+      <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+        Last update from Companies House:{" "}
+        <span className="text-[var(--text-secondary)]" title={`${absolute} UTC`}>
+          {human}
+        </span>
+        {" · "}
+        Page rebuilds every 60 s
+      </p>
     </div>
   );
 }
