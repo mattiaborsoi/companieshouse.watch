@@ -1,0 +1,106 @@
+version: 2
+updates:
+  # Web app — npm
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Bundle minor + patch updates so we don't get 30 PRs/week
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+      - automated
+
+  # Worker — pip
+  - package-ecosystem: pip
+    directory: /apps/worker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - automated
+
+  # Streamer — pip
+  - package-ecosystem: pip
+    directory: /apps/streamer
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - automated
+
+  # LLM gateway — pip
+  - package-ecosystem: pip
+    directory: /apps/llm-gateway
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - automated
+
+  # Migrations — pip
+  - package-ecosystem: pip
+    directory: /packages/db
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - automated
+
+  # Docker base images
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - automated
+  - package-ecosystem: docker
+    directory: /apps/worker
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - automated
+  - package-ecosystem: docker
+    directory: /apps/streamer
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - automated
+  - package-ecosystem: docker
+    directory: /apps/llm-gateway
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - automated
+
+  # GitHub Actions themselves
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - automated
