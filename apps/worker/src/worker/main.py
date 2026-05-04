@@ -19,7 +19,7 @@ from .anomaly_detector import detect_anomalies
 from .director_velocity import detect_director_velocity
 from .officer_churn import detect_officer_churn
 from .bulk_registration import detect_bulk_registration
-from .deferred import defer_event, drain_for_company
+from .deferred import defer_event, drain_for_company, gc_old_deferred_events
 from .hydrator import hydrate_pending_companies
 from .identity_resolver import resolve_batch as resolve_identity_batch
 from .pattern_detector import detect_patterns
@@ -208,6 +208,9 @@ class WorkerSettings:
         # Phase 3: filing-pattern badges — recompute nightly. Full pass over all
         # active companies is fine; the queries are aggregate and complete in seconds.
         cron(detect_patterns,          hour={3}, minute={0}),
+        # Phase C housekeeping: drop deferred events stuck for >7 days. They
+        # represent companies CH won't return — they're never going to hydrate.
+        cron(gc_old_deferred_events,   hour={4}, minute={0}),
         # Phase 4: press mentions via GDELT. Free + unmetered but be polite —
         # hourly tick × batch of 8 = 192/day.
         cron(resolve_press_batch,      minute={47}),

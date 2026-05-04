@@ -122,3 +122,31 @@ async def drain_for_company(pool: asyncpg.Pool, company_number: str) -> int:
     if drained:
         bound.info("deferred_drained", count=drained)
     return drained
+
+
+# ── GC: drop events stuck for too long ──────────────────────────────────────
+
+# Some events sit forever because CH never returns the company (transient
+# stream artefact, permission edge case, dissolved+redacted, etc.). Without
+# a cap, the table grows by a small amount every day. Anything older than
+# 7 days is almost certainly never going to hydrate.
+_GC_STALE_SQL = """
+DELETE FROM meta.deferred_events
+WHERE deferred_at < now() - INTERVAL '7 days'
+"""
+
+
+async def gc_old_deferred_events(ctx: dict) -> None:
+    """Cron: drop deferred events older than 7 days."""
+    pool: asyncpg.Pool = ctx["pool"]
+    bound = log.bind(job="gc_deferred_events")
+    result = await pool.execute(_GC_STALE_SQL)
+    # asyncpg returns "DELETE n" — parse the count.
+    try:
+        n = int(result.split()[-1])
+    except (ValueError, IndexError):
+        n = 0
+    if n:
+        bound.info("gc_stale_complete", rows_dropped=n)
+    else:
+        bound.debug("gc_stale_complete", rows_dropped=0)
