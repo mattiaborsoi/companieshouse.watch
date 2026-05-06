@@ -42,6 +42,7 @@ import {
   filingCategoryColor,
   formatFilingDescription,
   sicDescription,
+  buildCompanyDescription,
 } from "@/lib/utils";
 
 interface Props {
@@ -52,18 +53,58 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { number } = await params;
   const cn = number.toUpperCase();
   const local = await getCompany(cn);
-  const name = local?.name ?? (await getCompanyFromChRest(cn))?.name;
-  if (!name) return { title: "Company not found" };
+
+  // Build a fact-dense per-company description for meta + OG + Twitter.
+  // Falls back to a generic title for unknown companies (rare — usually CH
+  // REST will recover them on the page itself).
+  let source: Parameters<typeof buildCompanyDescription>[0] | null = null;
+  if (local) {
+    source = {
+      name: local.name,
+      companyNumber: local.companyNumber,
+      status: local.status,
+      type: local.type,
+      incorporatedOn: local.incorporatedOn,
+      dissolvedOn: local.dissolvedOn,
+      registeredAddress: local.registeredAddress,
+      sicCodes: local.sicCodes,
+    };
+  } else {
+    try {
+      const rest = await getCompanyFromChRest(cn);
+      if (rest) {
+        source = {
+          name: rest.name,
+          companyNumber: rest.companyNumber,
+          status: rest.status,
+          type: rest.type,
+          incorporatedOn: rest.incorporatedOn,
+          dissolvedOn: rest.dissolvedOn,
+          registeredAddress: rest.registeredAddress,
+          sicCodes: rest.sicCodes,
+        };
+      }
+    } catch {
+      // CH REST 429 / network — fall through to title-only metadata
+    }
+  }
+
+  if (!source) return { title: "Company not found" };
+
+  const description = buildCompanyDescription(source);
   const ogImage = `/api/og/c/${cn}`;
   return {
-    title: name,
+    title: source.name,
+    description,
     openGraph: {
-      title: name,
+      title: source.name,
+      description,
       images: [{ url: ogImage, width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
-      title: name,
+      title: source.name,
+      description,
       images: [ogImage],
     },
   };

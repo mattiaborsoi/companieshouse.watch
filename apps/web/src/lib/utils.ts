@@ -961,3 +961,106 @@ export function filingCategoryColor(category: string): string {
   };
   return colors[category] ?? "bg-zinc-900 text-zinc-400 border-zinc-600";
 }
+
+// ─── SEO helpers ─────────────────────────────────────────────────────────
+
+// CH `company_type` enum → readable English. Covers the common UK forms.
+const COMPANY_TYPE_LABELS: Record<string, string> = {
+  "ltd":                       "private limited company",
+  "private-limited-guarant-nsc": "private company limited by guarantee",
+  "private-limited-guarant-nsc-limited-exemption": "private company limited by guarantee",
+  "plc":                       "public limited company",
+  "llp":                       "limited liability partnership",
+  "lp":                        "limited partnership",
+  "limited-partnership":       "limited partnership",
+  "old-public-company":        "public company",
+  "private-unlimited":         "private unlimited company",
+  "private-unlimited-nsc":     "private unlimited company",
+  "uk-establishment":          "UK establishment",
+  "scottish-partnership":      "Scottish partnership",
+  "charitable-incorporated-organisation": "charitable incorporated organisation",
+  "scottish-charitable-incorporated-organisation": "Scottish charitable incorporated organisation",
+  "registered-society-non-jurisdictional": "registered society",
+  "industrial-and-provident-society":      "industrial and provident society",
+  "northern-ireland":           "Northern Ireland company",
+  "northern-ireland-other":    "Northern Ireland company",
+  "royal-charter":              "royal charter company",
+  "investment-company-with-variable-capital": "investment company with variable capital",
+  "icvc-securities":            "investment company with variable capital",
+  "icvc-warrant":               "investment company with variable capital",
+  "icvc-umbrella":              "investment company with variable capital",
+  "european-public-limited-liability-company-se": "Societas Europaea",
+  "further-education-or-sixth-form-college-corporation": "further education college",
+  "registered-overseas-entity": "overseas entity",
+};
+
+export function companyTypeLabel(type: string | null | undefined): string {
+  if (!type) return "company";
+  return COMPANY_TYPE_LABELS[type.toLowerCase()] ?? type.replace(/-/g, " ");
+}
+
+/**
+ * Build a per-company meta/OG/Twitter description.
+ *
+ * Search engines (and humans skimming SERPs) want each page to describe its
+ * own contents. The default site-wide description ("Live feed of every UK
+ * company filing…") is the same on every profile, which is bad SEO and bad
+ * social-share UX.
+ *
+ * This produces a fact-dense, ~155-char description per company using only
+ * fields we already have. Each piece is real data so descriptions are
+ * genuinely unique rather than templated boilerplate.
+ */
+export function buildCompanyDescription(input: {
+  name: string;
+  companyNumber: string;
+  status: string;
+  type: string;
+  incorporatedOn: Date | string | null;
+  dissolvedOn: Date | string | null;
+  registeredAddress?: Record<string, string> | null;
+  sicCodes?: string[] | null;
+}): string {
+  const parts: string[] = [];
+
+  const statusLabel = input.status === "active" ? "Active"
+    : input.status === "dissolved" ? "Dissolved"
+    : input.status === "liquidation" ? "In liquidation"
+    : input.status === "administration" ? "In administration"
+    : input.status === "open" ? "Active"
+    : input.status === "closed" ? "Dissolved"
+    : input.status?.replace(/-/g, " ") ?? "";
+  const type = companyTypeLabel(input.type);
+  parts.push(`${statusLabel} UK ${type}`.trim());
+
+  if (input.incorporatedOn) {
+    const inc = formatDate(input.incorporatedOn);
+    const locality = input.registeredAddress?.locality
+      || input.registeredAddress?.region
+      || null;
+    parts.push(locality ? `incorporated ${inc} in ${locality}` : `incorporated ${inc}`);
+  }
+  if (input.dissolvedOn) {
+    parts.push(`dissolved ${formatDate(input.dissolvedOn)}`);
+  }
+
+  // Primary sector — first SIC's human description
+  const primarySic = (input.sicCodes ?? [])[0];
+  if (primarySic) {
+    const sic = sicDescription(primarySic);
+    if (sic && sic !== primarySic) {
+      // Lowercase "Banks" → "banks" to flow into the sentence
+      parts.push(`sector: ${sic.toLowerCase()}`);
+    }
+  }
+
+  // Postcode helps both for local SEO and for users searching by area
+  const postcode = input.registeredAddress?.postal_code;
+  if (postcode) parts.push(`registered office in ${postcode}`);
+
+  // Final assembly
+  let s = `${input.name} (${input.companyNumber}) · ${parts.join("; ")}.`;
+  // Cap to Google's preferred ~155 chars
+  if (s.length > 160) s = s.slice(0, 157) + "…";
+  return s;
+}
