@@ -2,7 +2,17 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { searchCompanies, searchChRestApi, searchOfficers, searchChRestOfficers, chSlugFromLink } from "@/lib/db";
+import { headers } from "next/headers";
+import { createHash } from "crypto";
+import {
+  searchCompanies,
+  searchChRestApi,
+  searchOfficers,
+  searchChRestOfficers,
+  chSlugFromLink,
+  logSearch,
+  type SearchQueryType,
+} from "@/lib/db";
 import SearchBox from "@/components/ui/SearchBox";
 import { companyStatusClass, formatDate } from "@/lib/utils";
 
@@ -44,6 +54,28 @@ export default async function SearchPage({ searchParams }: Props) {
     query.length >= 2 && activeTab === "people" && officerResults.length === 0
       ? await searchChRestOfficers(query)
       : [];
+
+  // ── Analytics: fire-and-forget search logging. Never blocks render or
+  // surfaces an error to the user; zero-result queries are the highest signal.
+  if (query.length >= 2) {
+    const queryType: SearchQueryType =
+      isPostcode                     ? "postcode"
+      : /^\d{6,8}$/.test(query)      ? "company_number"
+      : activeTab === "people"       ? "officer_name"
+      :                                "company_name";
+
+    const localCount  = (localResultsRaw?.length ?? 0) + (officerResults?.length ?? 0);
+    const remoteCount = (remoteResults?.length ?? 0) + (remoteOfficers?.length ?? 0);
+
+    const ipRaw = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
+    const ipHash = ipRaw
+      ? createHash("sha256").update(ipRaw + "ch-search-salt").digest("hex")
+      : null;
+
+    logSearch(query, queryType, localCount, remoteCount, ipHash).catch(() => {
+      /* analytics must never break the page */
+    });
+  }
 
   const tabLink = (t: string) => `/search?q=${encodeURIComponent(query)}&tab=${t}`;
 

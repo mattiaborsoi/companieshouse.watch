@@ -14,8 +14,20 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const cfToken = process.env.NEXT_PUBLIC_CF_ANALYTICS_TOKEN;
   return (
     <html lang="en" className="h-full dark">
+      <head>
+        {cfToken && (
+          // Cloudflare Web Analytics — privacy-first, no cookies. Disabled
+          // automatically when the env var is absent (e.g. dev / preview).
+          <script
+            defer
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon={`{"token":"${cfToken}"}`}
+          />
+        )}
+      </head>
       <body className="flex min-h-full flex-col bg-[var(--bg-base)] text-[var(--text-primary)]">
         <NavBar />
         <main className="flex-1">{children}</main>

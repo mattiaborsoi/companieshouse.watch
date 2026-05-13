@@ -1164,6 +1164,38 @@ export async function getAnomalyForAddress(addressHash: string): Promise<{ id: s
   return (rows[0] as { id: string; score: number } | undefined) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Search analytics — fire-and-forget. Silently drops errors so a logging
+// failure can never break the page render.
+// ---------------------------------------------------------------------------
+
+export type SearchQueryType =
+  | "company_name"
+  | "company_number"
+  | "postcode"
+  | "officer_name";
+
+export async function logSearch(
+  query: string,
+  queryType: SearchQueryType,
+  resultCountLocal: number,
+  resultCountRemote: number,
+  ipHash: string | null,
+): Promise<void> {
+  await sql`
+    INSERT INTO audit.searches
+      (query, query_type, result_count_local, result_count_remote, had_results, ip_hash)
+    VALUES (
+      ${query},
+      ${queryType},
+      ${resultCountLocal},
+      ${resultCountRemote},
+      ${resultCountLocal + resultCountRemote > 0},
+      ${ipHash}
+    )
+  `;
+}
+
 export async function getSharedDirectors(addressHash: string): Promise<Array<{
   officerId: string;
   nameFull: string;
