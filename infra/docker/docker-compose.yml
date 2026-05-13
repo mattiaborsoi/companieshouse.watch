@@ -107,6 +107,9 @@ services:
   web:
     build:
       context: ../../apps/web
+      args:
+        # NEXT_PUBLIC_* vars must be at build time so Next.js can inline them.
+        NEXT_PUBLIC_CF_ANALYTICS_TOKEN: ${NEXT_PUBLIC_CF_ANALYTICS_TOKEN:-}
     environment:
       DATABASE_URL: postgresql://chwatch:chwatch@postgres:5432/chwatch
       REDIS_URL: redis://redis:6379/1
@@ -114,6 +117,7 @@ services:
       LLM_GATEWAY_URL: http://llm-gateway:8000
       NODE_ENV: production
       NEXT_PUBLIC_SITE_URL: ${SITE_URL:-https://ch.borsoi.co.uk}
+      NEXT_PUBLIC_CF_ANALYTICS_TOKEN: ${NEXT_PUBLIC_CF_ANALYTICS_TOKEN:-}
     ports:
       - "3030:3000"
     depends_on:
