@@ -10,6 +10,7 @@ import {
   searchOfficers,
   searchChRestOfficers,
   chSlugFromLink,
+  getSearchCounts,
   logSearch,
   type SearchQueryType,
 } from "@/lib/db";
@@ -42,24 +43,10 @@ export default async function SearchPage({ searchParams }: Props) {
   //      the cross-tab nudge banner. LIMIT 51 caps the work so popular queries
   //      like "smith" don't full-table-scan; we display 51+ as "50+".
   const COUNT_CAP = 51;
-  const countsPromise = query.length >= 2
-    ? sql<{ companiesN: number; officersN: number }[]>`
-        SELECT
-          (SELECT count(*)::int FROM (
-            SELECT 1 FROM public.companies
-             WHERE name ILIKE ${"%" + query + "%"}
-             LIMIT ${COUNT_CAP}
-          ) c) AS companies_n,
-          (SELECT count(*)::int FROM (
-            SELECT 1 FROM public.officers
-             WHERE name_full ILIKE ${"%" + query + "%"}
-             LIMIT ${COUNT_CAP}
-          ) o) AS officers_n
-      `
-    : Promise.resolve([{ companiesN: 0, officersN: 0 }]);
-
   const [counts, localResultsRaw, officerResults] = await Promise.all([
-    countsPromise,
+    query.length >= 2
+      ? getSearchCounts(query, COUNT_CAP)
+      : Promise.resolve({ companiesN: 0, officersN: 0 }),
     query.length >= 2 && activeTab === "companies"
       ? searchCompanies(query)
       : Promise.resolve([] as Awaited<ReturnType<typeof searchCompanies>>),
@@ -68,8 +55,8 @@ export default async function SearchPage({ searchParams }: Props) {
       : Promise.resolve([] as Awaited<ReturnType<typeof searchOfficers>>),
   ]);
 
-  const localCompaniesCount = counts[0]?.companiesN ?? 0;
-  const localOfficersCount  = counts[0]?.officersN  ?? 0;
+  const localCompaniesCount = counts.companiesN;
+  const localOfficersCount  = counts.officersN;
 
   const localResults = statusFilter === "all"
     ? localResultsRaw

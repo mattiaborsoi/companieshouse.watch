@@ -1165,6 +1165,32 @@ export async function getAnomalyForAddress(addressHash: string): Promise<{ id: s
 }
 
 // ---------------------------------------------------------------------------
+// Cheap "is there anything matching this query" counts. LIMIT-N bounded so a
+// popular query like "smith" doesn't trigger a full-table scan; callers
+// display the cap as "N+".
+// ---------------------------------------------------------------------------
+
+export async function getSearchCounts(
+  query: string,
+  cap: number,
+): Promise<{ companiesN: number; officersN: number }> {
+  const rows = await sql<{ companiesN: number; officersN: number }[]>`
+    SELECT
+      (SELECT count(*)::int FROM (
+        SELECT 1 FROM public.companies
+         WHERE name ILIKE ${"%" + query + "%"}
+         LIMIT ${cap}
+      ) c) AS companies_n,
+      (SELECT count(*)::int FROM (
+        SELECT 1 FROM public.officers
+         WHERE name_full ILIKE ${"%" + query + "%"}
+         LIMIT ${cap}
+      ) o) AS officers_n
+  `;
+  return rows[0] ?? { companiesN: 0, officersN: 0 };
+}
+
+// ---------------------------------------------------------------------------
 // Search analytics — fire-and-forget. Silently drops errors so a logging
 // failure can never break the page render.
 // ---------------------------------------------------------------------------
