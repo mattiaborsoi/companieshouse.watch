@@ -164,9 +164,8 @@ export default function AboutPage() {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Privacy</h2>
         <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
           Minimal self-hosted analytics: we log search queries (no personal data) to
-          understand what people look for and guide feature development. Page-level
-          traffic is measured via Cloudflare Web Analytics — no cookies, no
-          cross-site tracking, no third-party advertising trackers. All data
+          understand what people look for and guide feature development. No cookies,
+          no cross-site tracking, no third-party advertising trackers. All data
           displayed is public record. We do not store personal data beyond what is
           required to operate the service.
         </p>
