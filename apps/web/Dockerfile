@@ -13,6 +13,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# NEXT_PUBLIC_* env vars must be present at build time so Next.js can inline
+# them into client bundles + statically-rendered pages.
+ARG NEXT_PUBLIC_CF_ANALYTICS_TOKEN
+ENV NEXT_PUBLIC_CF_ANALYTICS_TOKEN=${NEXT_PUBLIC_CF_ANALYTICS_TOKEN}
+
 # DATABASE_URL is not needed at build time (queries run at request time)
 RUN npm run build
 
