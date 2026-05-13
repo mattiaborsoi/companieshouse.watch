@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import Redis from "ioredis";
 
 const connectionString =
   process.env.DATABASE_URL ??
@@ -13,6 +14,48 @@ const sql = postgres(connectionString, {
 });
 
 export default sql;
+
+// ── Tiny Redis cache for expensive read-heavy queries that fire on every
+// page render (NavBar getStatusBar, homepage getStats). Same idea as the
+// ch-cache wrapper but for our own Postgres queries.
+let _qcRedis: Redis | null = null;
+function queryCacheRedis(): Redis | null {
+  if (_qcRedis) return _qcRedis;
+  const url = process.env.REDIS_URL;
+  if (!url) return null;
+  try {
+    _qcRedis = new Redis(url, {
+      lazyConnect: false,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      reconnectOnError: () => true,
+    });
+    _qcRedis.on("error", () => { /* silent — fall through to live query */ });
+  } catch {
+    _qcRedis = null;
+  }
+  return _qcRedis;
+}
+
+// Wraps an async function in a Redis-cached read with a TTL. Falls through
+// to the live function on any cache miss or Redis error. JSON-safe outputs
+// only (Date → ISO string in the cache; callers convert back if needed).
+async function cachedQuery<T>(key: string, ttlSeconds: number, fn: () => Promise<T>): Promise<T> {
+  const redis = queryCacheRedis();
+  if (redis) {
+    try {
+      const raw = await redis.get(key);
+      if (raw) return JSON.parse(raw) as T;
+    } catch {
+      /* fall through */
+    }
+  }
+  const result = await fn();
+  if (redis) {
+    redis.set(key, JSON.stringify(result), "EX", ttlSeconds).catch(() => { /* swallow */ });
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -909,37 +952,44 @@ export async function getRecentFilingEvents(limit = 20): Promise<{
   }));
 }
 
+// NavBar status — runs on EVERY page render via layout.tsx, so it's the
+// single most-called query in the system. 60s cache means at most one DB
+// hit per minute regardless of traffic.
 export async function getStatusBar(): Promise<{
   filingsToday: number;
   lastEventAt: Date | null;
   companiesTotal: number;
 }> {
-  const rows = await sql`
-    SELECT
-      (SELECT count(*)::int FROM public.filings
-       WHERE ingested_at >= current_date) AS filings_today,
-      (SELECT max(ingested_at) FROM public.filings) AS last_event_at,
-      (SELECT count(*)::int FROM public.companies) AS companies_total
-  `;
-  const r = rows[0] as { filingsToday: number; lastEventAt: Date | null; companiesTotal: number };
-  return r;
+  return cachedQuery("stats:statusbar:v1", 60, async () => {
+    const rows = await sql`
+      SELECT
+        (SELECT count(*)::int FROM public.filings
+         WHERE ingested_at >= current_date) AS filings_today,
+        (SELECT max(ingested_at) FROM public.filings) AS last_event_at,
+        (SELECT count(*)::int FROM public.companies) AS companies_total
+    `;
+    return rows[0] as { filingsToday: number; lastEventAt: Date | null; companiesTotal: number };
+  });
 }
 
+// Homepage stats grid — same shape problem, cached for 60s.
 export async function getStats(): Promise<{
   companies: number;
   filingsToday: number;
   officers: number;
   pscs: number;
 }> {
-  const rows = await sql`
-    SELECT
-      (SELECT count(*)::int FROM public.companies)  AS companies,
-      (SELECT count(*)::int FROM public.filings
-       WHERE ingested_at >= current_date)            AS filings_today,
-      (SELECT count(*)::int FROM public.officers)   AS officers,
-      (SELECT count(*)::int FROM public.psc)        AS pscs
-  `;
-  return rows[0] as { companies: number; filingsToday: number; officers: number; pscs: number };
+  return cachedQuery("stats:homepage:v1", 60, async () => {
+    const rows = await sql`
+      SELECT
+        (SELECT count(*)::int FROM public.companies)  AS companies,
+        (SELECT count(*)::int FROM public.filings
+         WHERE ingested_at >= current_date)            AS filings_today,
+        (SELECT count(*)::int FROM public.officers)   AS officers,
+        (SELECT count(*)::int FROM public.psc)        AS pscs
+    `;
+    return rows[0] as { companies: number; filingsToday: number; officers: number; pscs: number };
+  });
 }
 
 // ---------------------------------------------------------------------------
