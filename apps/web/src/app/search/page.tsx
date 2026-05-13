@@ -34,13 +34,42 @@ export default async function SearchPage({ searchParams }: Props) {
   // Detect UK postcode (full or partial) — force CH REST search for companies
   const isPostcode = /^[A-Z]{1,2}[0-9][0-9A-Z]?(\s*[0-9][A-Z]{2})?$/i.test(query.trim());
 
-  // Always run BOTH local queries so we can surface a cross-tab nudge when
-  // the user lands on a tab that has no matches but the other one does.
-  // Both queries are cheap ILIKE lookups — cheaper than a wasted user.
-  const [localResultsRaw, officerResults] = await Promise.all([
-    query.length >= 2 ? searchCompanies(query) : Promise.resolve([]),
-    query.length >= 2 ? searchOfficers(query)  : Promise.resolve([]),
+  // Two-track query strategy:
+  //   1. Heavy "give me the full result rows" queries — only for the active tab
+  //      (so we don't pay for ranking/sorting/joining the side the user isn't
+  //      looking at).
+  //   2. A cheap bounded COUNT(*) for BOTH sides — powers the tab badges and
+  //      the cross-tab nudge banner. LIMIT 51 caps the work so popular queries
+  //      like "smith" don't full-table-scan; we display 51+ as "50+".
+  const COUNT_CAP = 51;
+  const countsPromise = query.length >= 2
+    ? sql<{ companiesN: number; officersN: number }[]>`
+        SELECT
+          (SELECT count(*)::int FROM (
+            SELECT 1 FROM public.companies
+             WHERE name ILIKE ${"%" + query + "%"}
+             LIMIT ${COUNT_CAP}
+          ) c) AS companies_n,
+          (SELECT count(*)::int FROM (
+            SELECT 1 FROM public.officers
+             WHERE name_full ILIKE ${"%" + query + "%"}
+             LIMIT ${COUNT_CAP}
+          ) o) AS officers_n
+      `
+    : Promise.resolve([{ companiesN: 0, officersN: 0 }]);
+
+  const [counts, localResultsRaw, officerResults] = await Promise.all([
+    countsPromise,
+    query.length >= 2 && activeTab === "companies"
+      ? searchCompanies(query)
+      : Promise.resolve([] as Awaited<ReturnType<typeof searchCompanies>>),
+    query.length >= 2 && activeTab === "people"
+      ? searchOfficers(query)
+      : Promise.resolve([] as Awaited<ReturnType<typeof searchOfficers>>),
   ]);
+
+  const localCompaniesCount = counts[0]?.companiesN ?? 0;
+  const localOfficersCount  = counts[0]?.officersN  ?? 0;
 
   const localResults = statusFilter === "all"
     ? localResultsRaw
@@ -58,30 +87,24 @@ export default async function SearchPage({ searchParams }: Props) {
       ? await searchChRestOfficers(query)
       : [];
 
-  // Cross-tab peek: when the active tab's local results are scant, also
-  // glance at the OTHER tab's CH REST endpoint — just to know whether the
-  // nudge banner should fire. Catches the "this query is actually a person
-  // we don't have indexed locally" case (e.g. niche officer names).
-  // Bounded to weak-local-result queries so the REST budget stays tight.
-  const PEEK_THRESHOLD = 3;
+  // Cross-tab REST peek: only fire when the WHOLE site (companies + officers)
+  // has zero local matches for this query. That's the moment when the user
+  // is genuinely stuck and a CH REST call to discover "actually there's a
+  // person matching this" provides real value. Skipped otherwise — popular
+  // queries already have plenty of local results to nudge from.
+  const totallyEmptyLocally = localCompaniesCount === 0 && localOfficersCount === 0;
   const [peekedRemoteOfficers, peekedRemoteCompanies] = await Promise.all([
-    query.length >= 2
-      && activeTab === "companies"
-      && officerResults.length === 0
-      && localResultsRaw.length < PEEK_THRESHOLD
+    query.length >= 2 && activeTab === "companies" && totallyEmptyLocally
       ? searchChRestOfficers(query)
       : Promise.resolve([]),
-    query.length >= 2
-      && activeTab === "people"
-      && localResultsRaw.length === 0
-      && officerResults.length < PEEK_THRESHOLD
+    query.length >= 2 && activeTab === "people" && totallyEmptyLocally
       ? searchChRestApi(query)
       : Promise.resolve([]),
   ]);
 
   // Effective counts that power the nudge banner (local + cross-tab peek)
-  const officerNudgeCount = officerResults.length + peekedRemoteOfficers.length;
-  const companyNudgeCount = localResultsRaw.length + peekedRemoteCompanies.length;
+  const officerNudgeCount = localOfficersCount  + peekedRemoteOfficers.length;
+  const companyNudgeCount = localCompaniesCount + peekedRemoteCompanies.length;
 
   // ── Analytics: fire-and-forget search logging. Never blocks render or
   // surfaces an error to the user; zero-result queries are the highest signal.
@@ -92,7 +115,9 @@ export default async function SearchPage({ searchParams }: Props) {
       : activeTab === "people"       ? "officer_name"
       :                                "company_name";
 
-    const localCount  = (localResultsRaw?.length ?? 0) + (officerResults?.length ?? 0);
+    // Use the cheap counts so we capture the full picture even when the
+    // active tab didn't fetch the other side's rows. Cap-aware: 51 means 50+.
+    const localCount  = localCompaniesCount + localOfficersCount;
     const remoteCount =
       (remoteResults?.length ?? 0) +
       (remoteOfficers?.length ?? 0) +
@@ -121,12 +146,15 @@ export default async function SearchPage({ searchParams }: Props) {
       <SearchBox initialValue={query} />
 
       {/* Tab switcher — counts make it obvious where the matches actually live.
-          Use the combined (local + cross-tab peek) count so a remote-only match
-          on the other side still shows up as a real number on the badge. */}
+          The badge uses the combined (local + cross-tab peek) count so a
+          remote-only match on the other side still surfaces a real number.
+          Capped at COUNT_CAP-1 (50) with "+" suffix for visual neatness. */}
       {query.length >= 2 && (
         <div className="flex gap-1 border-b border-[var(--border-subtle)]">
           {(["companies", "people"] as const).map((t) => {
-            const count = t === "companies" ? companyNudgeCount : officerNudgeCount;
+            const raw = t === "companies" ? companyNudgeCount : officerNudgeCount;
+            const count = raw >= COUNT_CAP ? `${COUNT_CAP - 1}+` : `${raw}`;
+            const hasMatches = raw > 0;
             const isActive = activeTab === t;
             return (
               <a
@@ -139,7 +167,7 @@ export default async function SearchPage({ searchParams }: Props) {
                 }`}
               >
                 <span>{t}</span>
-                {count > 0 && (
+                {hasMatches && (
                   <span
                     className={`inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
                       isActive
@@ -168,7 +196,8 @@ export default async function SearchPage({ searchParams }: Props) {
           <span className="text-sm text-[var(--text-primary)]">
             <span className="mr-2">👤</span>
             <span className="font-semibold text-[var(--accent)]">
-              {officerNudgeCount} {officerNudgeCount === 1 ? "person" : "people"}
+              {officerNudgeCount >= COUNT_CAP ? `${COUNT_CAP - 1}+` : officerNudgeCount}{" "}
+              {officerNudgeCount === 1 ? "person" : "people"}
             </span>{" "}
             also {officerNudgeCount === 1 ? "matches" : "match"}{" "}
             <span className="font-mono text-[var(--text-primary)]">&ldquo;{query}&rdquo;</span>
@@ -186,7 +215,8 @@ export default async function SearchPage({ searchParams }: Props) {
           <span className="text-sm text-[var(--text-primary)]">
             <span className="mr-2">🏢</span>
             <span className="font-semibold text-[var(--accent)]">
-              {companyNudgeCount} {companyNudgeCount === 1 ? "company" : "companies"}
+              {companyNudgeCount >= COUNT_CAP ? `${COUNT_CAP - 1}+` : companyNudgeCount}{" "}
+              {companyNudgeCount === 1 ? "company" : "companies"}
             </span>{" "}
             also {companyNudgeCount === 1 ? "matches" : "match"}{" "}
             <span className="font-mono text-[var(--text-primary)]">&ldquo;{query}&rdquo;</span>
