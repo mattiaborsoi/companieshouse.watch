@@ -58,6 +58,31 @@ export default async function SearchPage({ searchParams }: Props) {
       ? await searchChRestOfficers(query)
       : [];
 
+  // Cross-tab peek: when the active tab's local results are scant, also
+  // glance at the OTHER tab's CH REST endpoint — just to know whether the
+  // nudge banner should fire. Catches the "this query is actually a person
+  // we don't have indexed locally" case (e.g. niche officer names).
+  // Bounded to weak-local-result queries so the REST budget stays tight.
+  const PEEK_THRESHOLD = 3;
+  const [peekedRemoteOfficers, peekedRemoteCompanies] = await Promise.all([
+    query.length >= 2
+      && activeTab === "companies"
+      && officerResults.length === 0
+      && localResultsRaw.length < PEEK_THRESHOLD
+      ? searchChRestOfficers(query)
+      : Promise.resolve([]),
+    query.length >= 2
+      && activeTab === "people"
+      && localResultsRaw.length === 0
+      && officerResults.length < PEEK_THRESHOLD
+      ? searchChRestApi(query)
+      : Promise.resolve([]),
+  ]);
+
+  // Effective counts that power the nudge banner (local + cross-tab peek)
+  const officerNudgeCount = officerResults.length + peekedRemoteOfficers.length;
+  const companyNudgeCount = localResultsRaw.length + peekedRemoteCompanies.length;
+
   // ── Analytics: fire-and-forget search logging. Never blocks render or
   // surfaces an error to the user; zero-result queries are the highest signal.
   if (query.length >= 2) {
@@ -68,7 +93,11 @@ export default async function SearchPage({ searchParams }: Props) {
       :                                "company_name";
 
     const localCount  = (localResultsRaw?.length ?? 0) + (officerResults?.length ?? 0);
-    const remoteCount = (remoteResults?.length ?? 0) + (remoteOfficers?.length ?? 0);
+    const remoteCount =
+      (remoteResults?.length ?? 0) +
+      (remoteOfficers?.length ?? 0) +
+      (peekedRemoteOfficers?.length ?? 0) +
+      (peekedRemoteCompanies?.length ?? 0);
 
     const ipRaw = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
     const ipHash = ipRaw
@@ -91,11 +120,13 @@ export default async function SearchPage({ searchParams }: Props) {
 
       <SearchBox initialValue={query} />
 
-      {/* Tab switcher — counts make it obvious where the matches actually live */}
+      {/* Tab switcher — counts make it obvious where the matches actually live.
+          Use the combined (local + cross-tab peek) count so a remote-only match
+          on the other side still shows up as a real number on the badge. */}
       {query.length >= 2 && (
         <div className="flex gap-1 border-b border-[var(--border-subtle)]">
           {(["companies", "people"] as const).map((t) => {
-            const count = t === "companies" ? localResultsRaw.length : officerResults.length;
+            const count = t === "companies" ? companyNudgeCount : officerNudgeCount;
             const isActive = activeTab === t;
             return (
               <a
@@ -129,7 +160,7 @@ export default async function SearchPage({ searchParams }: Props) {
           user almost certainly hasn't realised exist. Highest-signal moment:
           they're on companies, got few/no hits, but the name matches an
           officer (or vice versa). Pattern lifted from Google "Did you mean". */}
-      {query.length >= 2 && activeTab === "companies" && officerResults.length > 0 && (
+      {query.length >= 2 && activeTab === "companies" && officerNudgeCount > 0 && (
         <a
           href={tabLink("people")}
           className="flex items-center justify-between gap-3 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/[0.06] hover:bg-[var(--accent)]/[0.10] px-4 py-3 transition-colors group"
@@ -137,9 +168,9 @@ export default async function SearchPage({ searchParams }: Props) {
           <span className="text-sm text-[var(--text-primary)]">
             <span className="mr-2">👤</span>
             <span className="font-semibold text-[var(--accent)]">
-              {officerResults.length} {officerResults.length === 1 ? "person" : "people"}
+              {officerNudgeCount} {officerNudgeCount === 1 ? "person" : "people"}
             </span>{" "}
-            also {officerResults.length === 1 ? "matches" : "match"}{" "}
+            also {officerNudgeCount === 1 ? "matches" : "match"}{" "}
             <span className="font-mono text-[var(--text-primary)]">&ldquo;{query}&rdquo;</span>
           </span>
           <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)] group-hover:translate-x-0.5 transition-transform shrink-0">
@@ -147,7 +178,7 @@ export default async function SearchPage({ searchParams }: Props) {
           </span>
         </a>
       )}
-      {query.length >= 2 && activeTab === "people" && localResultsRaw.length > 0 && (
+      {query.length >= 2 && activeTab === "people" && companyNudgeCount > 0 && (
         <a
           href={tabLink("companies")}
           className="flex items-center justify-between gap-3 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/[0.06] hover:bg-[var(--accent)]/[0.10] px-4 py-3 transition-colors group"
@@ -155,9 +186,9 @@ export default async function SearchPage({ searchParams }: Props) {
           <span className="text-sm text-[var(--text-primary)]">
             <span className="mr-2">🏢</span>
             <span className="font-semibold text-[var(--accent)]">
-              {localResultsRaw.length} {localResultsRaw.length === 1 ? "company" : "companies"}
+              {companyNudgeCount} {companyNudgeCount === 1 ? "company" : "companies"}
             </span>{" "}
-            also {localResultsRaw.length === 1 ? "matches" : "match"}{" "}
+            also {companyNudgeCount === 1 ? "matches" : "match"}{" "}
             <span className="font-mono text-[var(--text-primary)]">&ldquo;{query}&rdquo;</span>
           </span>
           <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)] group-hover:translate-x-0.5 transition-transform shrink-0">
