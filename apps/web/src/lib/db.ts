@@ -490,7 +490,20 @@ export async function getCompanyPscs(companyNumber: string): Promise<Psc[]> {
 }
 
 export async function searchCompanies(query: string, limit = 20): Promise<Company[]> {
-  // Use pg_trgm similarity + tsquery for combined search
+  // Search via the name_normalised GIN trigram index — orders of magnitude
+  // faster than ILIKE on raw `name` (which has no usable index for leading-
+  // wildcard patterns). Each normalised term gets its own ILIKE, AND'd
+  // together — supports word-reorder ("isola alessandro" finds "Alessandro
+  // Isola Ltd" because both are normalised to "alessandro isola").
+  const exactNumber = query.trim().toUpperCase();
+  const terms = normaliseSearchTerms(query);
+
+  const trgmConditions = terms.length > 0
+    ? terms
+        .map((t) => sql`name_normalised ILIKE ${"%" + t + "%"}`)
+        .reduce((a, b) => sql`${a} AND ${b}`)
+    : sql`FALSE`;
+
   return sql<Company[]>`
     SELECT
       company_number,
@@ -505,10 +518,10 @@ export async function searchCompanies(query: string, limit = 20): Promise<Compan
       last_event_at
     FROM public.companies
     WHERE
-      name ILIKE ${"%" + query + "%"}
-      OR company_number = ${query.trim().toUpperCase()}
+      (${trgmConditions})
+      OR company_number = ${exactNumber}
     ORDER BY
-      CASE WHEN company_number = ${query.trim().toUpperCase()} THEN 0 ELSE 1 END,
+      CASE WHEN company_number = ${exactNumber} THEN 0 ELSE 1 END,
       CASE WHEN status = 'active' THEN 0 ELSE 1 END,
       name
     LIMIT ${limit}
@@ -516,6 +529,16 @@ export async function searchCompanies(query: string, limit = 20): Promise<Compan
 }
 
 export async function searchOfficers(query: string, limit = 20): Promise<(Officer & { appointmentCount: number })[]> {
+  // Same trigram-index trick as searchCompanies — but officers.name_normalised
+  // stores names surname-first ("smith mark richard"), so per-word AND'd
+  // ILIKEs are essential to handle users typing forename-first.
+  const terms = normaliseSearchTerms(query);
+  if (terms.length === 0) return [];
+
+  const where = terms
+    .map((t) => sql`o.name_normalised ILIKE ${"%" + t + "%"}`)
+    .reduce((a, b) => sql`${a} AND ${b}`);
+
   return sql`
     SELECT
       o.officer_id,
@@ -531,7 +554,7 @@ export async function searchOfficers(query: string, limit = 20): Promise<(Office
       COUNT(a.officer_id)::int AS appointment_count
     FROM public.officers o
     LEFT JOIN public.appointments a USING (officer_id)
-    WHERE o.name_full ILIKE ${"%" + query + "%"}
+    WHERE ${where}
     GROUP BY o.officer_id
     ORDER BY COUNT(a.officer_id) DESC, o.name_full
     LIMIT ${limit}
@@ -1165,26 +1188,32 @@ export async function getAnomalyForAddress(addressHash: string): Promise<{ id: s
 }
 
 // ---------------------------------------------------------------------------
-// Cheap "is there anything matching this query" counts. LIMIT-N bounded so a
-// popular query like "smith" doesn't trigger a full-table scan; callers
-// display the cap as "N+".
+// Cheap "is there anything matching this query" counts. Uses the
+// name_normalised GIN trigram index on both tables — popular queries that
+// would otherwise full-table-scan now hit the index. LIMIT-N caps further so
+// extremely common terms ("smith") return fast; callers show the cap as "N+".
 // ---------------------------------------------------------------------------
+
+import { normaliseSearchTerms } from "./utils";
 
 export async function getSearchCounts(
   query: string,
   cap: number,
 ): Promise<{ companiesN: number; officersN: number }> {
+  const terms = normaliseSearchTerms(query);
+  if (terms.length === 0) return { companiesN: 0, officersN: 0 };
+
+  const where = terms
+    .map((t) => sql`name_normalised ILIKE ${"%" + t + "%"}`)
+    .reduce((a, b) => sql`${a} AND ${b}`);
+
   const rows = await sql<{ companiesN: number; officersN: number }[]>`
     SELECT
       (SELECT count(*)::int FROM (
-        SELECT 1 FROM public.companies
-         WHERE name ILIKE ${"%" + query + "%"}
-         LIMIT ${cap}
+        SELECT 1 FROM public.companies WHERE ${where} LIMIT ${cap}
       ) c) AS companies_n,
       (SELECT count(*)::int FROM (
-        SELECT 1 FROM public.officers
-         WHERE name_full ILIKE ${"%" + query + "%"}
-         LIMIT ${cap}
+        SELECT 1 FROM public.officers  WHERE ${where} LIMIT ${cap}
       ) o) AS officers_n
   `;
   return rows[0] ?? { companiesN: 0, officersN: 0 };

@@ -6,6 +6,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Name normalisation — mirror of apps/worker/src/worker/upserts.py
+// _normalise_name(). Apply the same transform to the search query so it
+// matches against companies.name_normalised / officers.name_normalised, both
+// of which are GIN-trigram indexed. Returns the per-term word list so we can
+// build an AND-of-ILIKEs query (handles word-order differences like users
+// typing "alessandro isola" matching stored "ISOLA, Alessandro").
+// ────────────────────────────────────────────────────────────────────────────
+const NAME_SUFFIX_RE = /\b(limited|ltd\.?|public limited company|plc\.?|llp\.?|llc\.?|l\.l\.p\.?|l\.t\.d\.?|cic|charitable incorporated organisation|cio)\b/gi;
+
+export function normaliseSearchTerms(query: string): string[] {
+  return query
+    .toLowerCase()
+    .replace(NAME_SUFFIX_RE, " ")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((t) => t.length >= 2); // skip 1-char tokens (too noisy for trigram)
+}
+
 export function formatDate(d: Date | string | null | undefined): string {
   if (!d) return "—";
   return format(new Date(d), "d MMM yyyy");
