@@ -34,9 +34,12 @@ export default async function SearchPage({ searchParams }: Props) {
   // Detect UK postcode (full or partial) — force CH REST search for companies
   const isPostcode = /^[A-Z]{1,2}[0-9][0-9A-Z]?(\s*[0-9][A-Z]{2})?$/i.test(query.trim());
 
+  // Always run BOTH local queries so we can surface a cross-tab nudge when
+  // the user lands on a tab that has no matches but the other one does.
+  // Both queries are cheap ILIKE lookups — cheaper than a wasted user.
   const [localResultsRaw, officerResults] = await Promise.all([
     query.length >= 2 ? searchCompanies(query) : Promise.resolve([]),
-    query.length >= 2 && activeTab === "people" ? searchOfficers(query) : Promise.resolve([]),
+    query.length >= 2 ? searchOfficers(query)  : Promise.resolve([]),
   ]);
 
   const localResults = statusFilter === "all"
@@ -88,23 +91,79 @@ export default async function SearchPage({ searchParams }: Props) {
 
       <SearchBox initialValue={query} />
 
-      {/* Tab switcher */}
+      {/* Tab switcher — counts make it obvious where the matches actually live */}
       {query.length >= 2 && (
         <div className="flex gap-1 border-b border-[var(--border-subtle)]">
-          {(["companies", "people"] as const).map((t) => (
-            <a
-              key={t}
-              href={tabLink(t)}
-              className={`px-4 py-2 text-xs font-mono uppercase tracking-wide transition-colors border-b-2 -mb-px ${
-                activeTab === t
-                  ? "border-[var(--accent)] text-[var(--accent)]"
-                  : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              {t}
-            </a>
-          ))}
+          {(["companies", "people"] as const).map((t) => {
+            const count = t === "companies" ? localResultsRaw.length : officerResults.length;
+            const isActive = activeTab === t;
+            return (
+              <a
+                key={t}
+                href={tabLink(t)}
+                className={`px-4 py-2 text-xs font-mono uppercase tracking-wide transition-colors border-b-2 -mb-px flex items-center gap-2 ${
+                  isActive
+                    ? "border-[var(--accent)] text-[var(--accent)]"
+                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                }`}
+              >
+                <span>{t}</span>
+                {count > 0 && (
+                  <span
+                    className={`inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
+                      isActive
+                        ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                        : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </a>
+            );
+          })}
         </div>
+      )}
+
+      {/* Cross-tab nudge — only surface when the OTHER tab has matches the
+          user almost certainly hasn't realised exist. Highest-signal moment:
+          they're on companies, got few/no hits, but the name matches an
+          officer (or vice versa). Pattern lifted from Google "Did you mean". */}
+      {query.length >= 2 && activeTab === "companies" && officerResults.length > 0 && (
+        <a
+          href={tabLink("people")}
+          className="flex items-center justify-between gap-3 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/[0.06] hover:bg-[var(--accent)]/[0.10] px-4 py-3 transition-colors group"
+        >
+          <span className="text-sm text-[var(--text-primary)]">
+            <span className="mr-2">👤</span>
+            <span className="font-semibold text-[var(--accent)]">
+              {officerResults.length} {officerResults.length === 1 ? "person" : "people"}
+            </span>{" "}
+            also {officerResults.length === 1 ? "matches" : "match"}{" "}
+            <span className="font-mono text-[var(--text-primary)]">&ldquo;{query}&rdquo;</span>
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)] group-hover:translate-x-0.5 transition-transform shrink-0">
+            view people →
+          </span>
+        </a>
+      )}
+      {query.length >= 2 && activeTab === "people" && localResultsRaw.length > 0 && (
+        <a
+          href={tabLink("companies")}
+          className="flex items-center justify-between gap-3 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/[0.06] hover:bg-[var(--accent)]/[0.10] px-4 py-3 transition-colors group"
+        >
+          <span className="text-sm text-[var(--text-primary)]">
+            <span className="mr-2">🏢</span>
+            <span className="font-semibold text-[var(--accent)]">
+              {localResultsRaw.length} {localResultsRaw.length === 1 ? "company" : "companies"}
+            </span>{" "}
+            also {localResultsRaw.length === 1 ? "matches" : "match"}{" "}
+            <span className="font-mono text-[var(--text-primary)]">&ldquo;{query}&rdquo;</span>
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)] group-hover:translate-x-0.5 transition-transform shrink-0">
+            view companies →
+          </span>
+        </a>
       )}
 
       {query.length > 0 && query.length < 2 && (
