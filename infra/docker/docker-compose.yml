@@ -26,7 +26,13 @@ services:
       - "127.0.0.1:6379:6379"
     volumes:
       - ../../data/redis:/data
-    command: redis-server --appendonly yes
+    # maxmemory cap + volatile-lru keeps Redis under ~500 MB. All our keys
+    # (arq jobs, ch:rest cache, query cache) have TTLs, so volatile-lru
+    # evicts the oldest-expiring ones first when we hit the cap.
+    command: >
+      redis-server --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy volatile-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
