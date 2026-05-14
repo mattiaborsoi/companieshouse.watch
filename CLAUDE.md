@@ -10,13 +10,15 @@ This file exists so that Claude Code can pick up this project cold in a new conv
 
 Core pitch: live feed of every UK company filing/officer/PSC change, with address-clustering anomaly detection and Anthropic-powered plain-English explanations of suspicious patterns.
 
-Full spec is in `docs/BUILD_PLAN.md` (architecture, phases, AI policy) and `docs/DATA_MODEL.md` (full Postgres schema).
+Full spec is in `BUILD_PLAN.md` (architecture, phases, AI policy) and `DATA_MODEL.md` (full Postgres schema).
 
 ---
 
 ## Current implementation state
 
-**Phase 1 complete. Phase 2 (web UI) scaffolded and running.** Data is flowing live from Companies House.
+**Phases 1–3 complete + Phase C (decoupled hydration) + assorted Phase-4-ish enrichments.**
+The site is live at https://ch.borsoi.co.uk on a DigitalOcean droplet (`infra/docker/docker-compose.yml`).
+Data is streaming continuously from Companies House.
 
 ### Phase 1 — Data pipeline (complete)
 - `infra/docker/docker-compose.yml` — full stack (Postgres 16, Redis 7, streamer, worker, web, migrate, test)
@@ -51,10 +53,36 @@ Full spec is in `docs/BUILD_PLAN.md` (architecture, phases, AI policy) and `docs
 - Officer profile `/officer/[id]`: service address extracted from CH REST appointments response and displayed.
 - Live feed `/feed`: client-side deduplication by `transactionId` (prevents duplicates on SSE reconnect after deploy).
 
-### Not yet built
-- XBRL financials parser (Phase 4)
+### Phase 4 / enrichments (complete)
+- **Identity resolution** (`packages/db/alembic/versions/..._0003_company_identity.py`) — `company_identity` table linking companies that share directors/addresses across renames.
+- **Formation agent detection** — `known_addresses` table (migration 0002) flags addresses with 50+ active companies (typical formation-agent pattern).
+- **Director continuity** (migration 0006) — `person_match_key` on officers + `appointments_history` for cross-company tracking.
+- **Pattern badges** (migration 0007) — `company_patterns` table; multiple SQL detectors populate per-company badges (rapid director turnover, address reuse, dormant filings, etc.) visible on `/c/[number]`.
+- **Press mentions** (migration 0008) — `company_press` + `company_press_resolutions`; HTTP fetcher with SSRF protection + per-domain rate limit + robots.txt awareness scrapes news headlines, displayed on company profile.
+- **Favicon cache** (migration 0005) — `company_favicons` table; `/api/favicon/[number]` resolves real corporate-website favicons (cached, with feedback table for user corrections).
 
-**Web app runs on port 3030** (ports 3000 and 3001 were occupied by other containers on the dev machine).
+### Phase C — Decoupled hydration (complete)
+- **Problem**: officer/PSC events for unknown companies used to retry 3× with 30s delay each, blocking worker slots for up to 5 min per failed event. Under any backlog this saturated arq.
+- **Fix** (migration 0009 + `apps/worker/src/worker/deferred.py`): events for unknown companies go to `meta.deferred_events`. A separate cron rate-limit-aware drains the queue by fetching the missing companies from CH REST.
+- **Daily GC at 04:00 UTC** deletes deferred rows older than 7 days.
+
+### Search analytics + perf (complete)
+- **`audit.searches`** (migration 0010, partitioned by month) — every search logged with query, query_type (`company_name | company_number | postcode | officer_name`), local + remote result counts, `had_results` flag, SHA-256-hashed IP for dedup. Fire-and-forget from `apps/web/src/app/search/page.tsx`.
+- **`pg_trgm` GIN indexes** (migration 0011) on `companies.name_normalised` and `officers.name_full` — search queries route through `name_normalised` with per-word AND'd ILIKEs, giving ~30-100× speed-up vs raw seq-scan ILIKE.
+- **Cross-tab nudge banner** on `/search`: when active tab has weak local matches, peek CH REST on the OTHER side so we can show "👤 N people also match" / "🏢 N companies also match" with a count.
+
+### Caching & observability (complete)
+- **Redis query cache** in `apps/web/src/lib/db.ts` (`cachedQuery()`): 60s TTL on `getStatusBar` (NavBar) and `getStats` (homepage stats grid). Silent fallback to live query on any cache error.
+- **Redis maxmemory cap**: 512 MB with `volatile-lru` + `activedefrag yes` — prevents the `ch:rest:*` cache from filling the droplet's RAM (set in `infra/docker/docker-compose.yml`, applied live via CONFIG SET).
+- **Per-page revalidate=60s** on `/c/[number]` and `/officer/[id]` for ISR.
+- **Per-company OG/Twitter cards + meta description** via `generateMetadata()` and `buildCompanyDescription()` in `utils.ts`.
+
+### Not yet built
+- XBRL financials parser (the `public.financials` table exists but isn't populated)
+- A proper analytics dashboard (query `audit.searches` directly until volume justifies it)
+- Sitemap.xml (deferred SEO item)
+
+**Web app runs on port 3030** in production (ports 3000 and 3001 were occupied by other containers on the dev machine).
 
 ---
 
@@ -138,7 +166,17 @@ make up             # restart services
     db/
       alembic/
         versions/
-          20260429_0001_initial.py   # full schema
+          20260429_0001_initial.py             # full base schema
+          20260430_0002_known_addresses.py     # formation-agent flagging
+          20260430_0003_company_identity.py    # identity-resolution table
+          20260430_0004_audit_events_retry_index.py
+          20260430_0005_favicon_cache_feedback.py
+          20260430_0006_director_continuity.py # person_match_key, appointments_history
+          20260430_0007_company_patterns.py    # per-company badges
+          20260430_0008_company_press.py       # press mentions + resolutions
+          20260501_0009_deferred_events.py     # Phase C — meta.deferred_events
+          20260513_0010_search_analytics.py    # audit.searches (partitioned)
+          20260513_0011_pg_trgm_search_indexes.py
       alembic.ini
   infra/
     docker/
@@ -167,16 +205,22 @@ Defined in `.env` (gitignored). Docker Compose services receive them via the `en
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `CH_REST_KEY` | streamer, worker | Companies House REST API key |
+| `CH_REST_KEY` | streamer, worker, web | Companies House REST API key |
 | `CH_STREAM_KEY` | streamer | Companies House streaming API key (separate credential) |
-| `DATABASE_URL` | worker | asyncpg DSN; use `localhost` for direct access, `postgres` hostname inside Docker |
+| `DATABASE_URL` | worker, web | asyncpg / postgres.js DSN; `postgres` hostname inside Docker |
 | `DATABASE_URL_SYNC` | migrate | psycopg2 DSN for Alembic |
-| `REDIS_URL` | streamer, worker | `localhost:6379` locally; `redis:6379` inside Docker |
-| `ANTHROPIC_API_KEY` | llm-gateway (Phase 3) | never used directly by streamer/worker |
+| `REDIS_URL` | streamer, worker, web | `redis://redis:6379/0` (worker db0), `/1` (web cache db1) inside Docker |
+| `ANTHROPIC_API_KEY` | llm-gateway | never used directly by streamer/worker |
+| `GATEWAY_API_KEY` | web → llm-gateway | Bearer token protecting `/spend` endpoint |
+| `BRAVE_SEARCH_API_KEY` | worker | Brave Search API for company-website resolution |
+| `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD` | worker | Optional auto-poster |
+| `SITE_URL` | worker | Used in Bluesky posts and `NEXT_PUBLIC_SITE_URL` default for web |
+
+**Note**: the droplet has TWO `.env` files — `/opt/.../.env` (project root) and `/opt/.../infra/docker/.env`. Docker Compose invoked with `-f infra/docker/docker-compose.yml` reads from the **compose-file directory** by default. New secrets go in `infra/docker/.env`.
 
 ---
 
-## Key technical decisions (from `docs/BUILD_PLAN.md` decisions log)
+## Key technical decisions (from `BUILD_PLAN.md` decisions log)
 
 | Decision | Choice | Reason |
 |---|---|---|
@@ -197,9 +241,9 @@ Defined in `.env` (gitignored). Docker Compose services receive them via the `en
 
 ---
 
-## AI policy (Phase 3 — not yet implemented)
+## AI policy (Phase 3 — implemented)
 
-See `docs/AI_POLICY.md`. Hard rules that must never be bypassed:
+See `AI_POLICY.md`. Hard rules that must never be bypassed:
 - All LLM calls go through `apps/llm-gateway/` only
 - Fixed prompt templates; users never write prompts
 - Hard daily cap: £5; monthly cap: £100
@@ -211,10 +255,17 @@ See `docs/AI_POLICY.md`. Hard rules that must never be bypassed:
 
 ## Postgres schema highlights
 
-Full schema in `docs/DATA_MODEL.md`. Key things to know:
-- `public.companies` — primary key is `company_number` (text); `registered_address_hash` is the anomaly clustering key
+Base schema documented in `DATA_MODEL.md`. **Important:** migrations 0002–0011 add tables not yet
+reflected there — when in doubt, the migration files in `packages/db/alembic/versions/` are ground truth.
+
+Key things to know:
+- `public.companies` — primary key is `company_number` (text); `registered_address_hash` is the anomaly clustering key. `name_normalised` (lowercased, suffixes stripped) is the column the search code queries — it has a GIN trigram index.
+- `public.officers.name_normalised` — same idea, surname-first form (e.g. "smith stephen bryan"); also GIN-trigram-indexed.
 - `audit.events` — append-only, partitioned by month; never delete
+- `audit.searches` — every search query, partitioned by month (migration 0010). Zero-result queries are the highest signal for what features to build next.
 - `audit.llm_calls` — every LLM call logged, including cache hits; partitioned by month
+- `meta.deferred_events` — Phase C hydration queue for events whose company isn't known yet (migration 0009)
+- `company_patterns`, `company_press`, `company_identity`, `company_favicons`, `known_addresses`, `appointments_history` — enrichment tables
 - Super-secure PSCs (`kind LIKE 'super-secure%'`): display existence only, never name/address/dob
 - Money stored in **pence as bigint** — never floats
 - All timestamps are `timestamptz` UTC
@@ -249,16 +300,28 @@ Full schema in `docs/DATA_MODEL.md`. Key things to know:
 
 ---
 
-## What to do next (Phase 1 completion)
+## Production deployment
 
-1. `make setup && make infra && make db-migrate` — get the schema applied
-2. `make up` — start streamer and worker
-3. `make logs` — watch for events flowing in
-4. `make db-shell` → `SELECT count(*) FROM public.filings;` — verify rows accumulating
-5. Once data is flowing, run `make down && make up` — verify stream resumes from timepoint
-6. Phase 1 exit: filings visible in `psql`, streamer reconnects after restart
+Live droplet: `root@161.35.193.48` (DigitalOcean, 2 vCPU / 4 GB / Ubuntu).
+SSH key: `~/.ssh/digitalocean_ai`.
 
-After Phase 1: build the Next.js frontend (Phase 2 — see `docs/BUILD_PLAN.md` §12).
+```bash
+# Standard deploy
+ssh -i ~/.ssh/digitalocean_ai root@161.35.193.48
+cd /opt/companieshouse/companieshouse.watch
+git pull --ff-only
+docker compose -f infra/docker/docker-compose.yml run --rm migrate   # if migrations
+docker compose -f infra/docker/docker-compose.yml build web && \
+  docker compose -f infra/docker/docker-compose.yml up -d web
+```
+
+Public domain `ch.borsoi.co.uk` is proxied by Cloudflare; nginx on the droplet
+terminates TLS and forwards to the `web` container on port 3030.
+
+Cloudflare Web Analytics for `ch.borsoi.co.uk` is captured via the parent
+`borsoi.co.uk` Automatic Setup — **no script tag is injected by the app**.
+
+After Phase 1: build the Next.js frontend (Phase 2 — see `BUILD_PLAN.md` §12).
 
 ---
 

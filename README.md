@@ -108,7 +108,7 @@ Local data is stored in `data/` (gitignored) and bind-mounted into the container
 
 ## AI features
 
-AI-generated content uses Anthropic Claude (Haiku for bulk operations). All AI features comply with the [AI Policy](docs/AI_POLICY.md):
+AI-generated content uses Anthropic Claude (Haiku for bulk operations). All AI features comply with the [AI Policy](AI_POLICY.md):
 - Fixed prompt templates only; no user-supplied prompts, ever
 - Hard daily (£5) and monthly (£100) spend caps
 - Every output labelled "AI generated, [date]"
