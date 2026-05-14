@@ -24,10 +24,12 @@ const AI_CRAWLERS_DISALLOWED = [
   "FacebookBot",
   "Meta-ExternalAgent",
   "Meta-ExternalFetcher",
+  "meta-webindexer",         // Meta AI training crawler (lowercase UA in the wild)
   "ImagesiftBot",
   "Omgili",
   "DataForSeoBot",
   "PetalBot",
+  "Amzn-SearchBot",          // Amazon search-index crawler (distinct from Amazonbot)
 ];
 
 export default function robots(): MetadataRoute.Robots {
