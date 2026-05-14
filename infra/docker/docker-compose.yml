@@ -29,10 +29,13 @@ services:
     # maxmemory cap + volatile-lru keeps Redis under ~500 MB. All our keys
     # (arq jobs, ch:rest cache, query cache) have TTLs, so volatile-lru
     # evicts the oldest-expiring ones first when we hit the cap.
+    # activedefrag returns free chunks to the OS as fragmentation builds —
+    # without it RSS can drift to 2× the logical usage after eviction storms.
     command: >
       redis-server --appendonly yes
       --maxmemory 512mb
       --maxmemory-policy volatile-lru
+      --activedefrag yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
