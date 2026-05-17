@@ -193,10 +193,15 @@ async def shutdown(ctx: dict) -> None:
 class WorkerSettings:
     functions = [process_event]
     cron_jobs = [
-        cron(detect_anomalies,        minute={0, 10, 20, 30, 40, 50}),
-        cron(detect_director_velocity, minute={5, 15, 25, 35, 45, 55}),
-        cron(detect_officer_churn,    minute={2, 12, 22, 32, 42, 52}),
-        cron(detect_bulk_registration, minute={7, 17, 27, 37, 47, 57}),
+        # Anomaly detectors each do a full re-scan of the company/appointment
+        # tables (~60-90s for detect_anomalies). At every-10-min cadence that
+        # was ~130s of heavy SQL per 10-min window — enough to trip CPU alerts.
+        # These detect slow-moving structural patterns, so hourly is plenty.
+        # Staggered across the hour so they never overlap.
+        cron(detect_anomalies,        minute={0}),
+        cron(detect_director_velocity, minute={15}),
+        cron(detect_officer_churn,    minute={30}),
+        cron(detect_bulk_registration, minute={45}),
         # Phase C: hydrate companies for which deferred events are waiting.
         # Every 2 min, batch of 30 = 900 CH calls/hour worst-case (well under 2/sec
         # CH limit). Drains naturally when there are no pending hydrations.
