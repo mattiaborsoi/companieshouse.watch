@@ -34,3 +34,6 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI assistant working memory (local only — not for the repo)
+claude_memory.md
