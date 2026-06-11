@@ -31,12 +31,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Next standalone tracer doesn't reliably include ioredis. Force-copy the whole
 # transitive set so server-side imports resolve at runtime.
+# This list must match ioredis's dependencies in package-lock.json — ioredis
+# 5.11 dropped lodash.defaults/lodash.isarguments and added debug (+ ms).
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/ioredis ./node_modules/ioredis
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@ioredis ./node_modules/@ioredis
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/cluster-key-slot ./node_modules/cluster-key-slot
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/debug ./node_modules/debug
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/denque ./node_modules/denque
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/lodash.defaults ./node_modules/lodash.defaults
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/lodash.isarguments ./node_modules/lodash.isarguments
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/ms ./node_modules/ms
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/redis-errors ./node_modules/redis-errors
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/redis-parser ./node_modules/redis-parser
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/standard-as-callback ./node_modules/standard-as-callback
