@@ -1,9 +1,19 @@
+# Cap container log files — the worker logs every stream event and its
+# json-file log grew to 2.3 GB unbounded (found 2026-06-11). 3 × 50 MB
+# per service keeps several days of history while bounding disk use.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
 
   # ── Data stores ────────────────────────────────────────────────────────────
 
   postgres:
     image: postgres:16-alpine
+    logging: *default-logging
     environment:
       POSTGRES_DB: chwatch
       POSTGRES_USER: chwatch
@@ -41,6 +51,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 15
+    logging: *default-logging
     restart: unless-stopped
 
   # ── Schema migrations ───────────────────────────────────────────────────────
@@ -72,6 +83,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   worker:
@@ -91,6 +103,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   llm-gateway:
@@ -111,6 +124,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   web:
@@ -130,6 +144,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   # ── Test runner (not started by default; call via `make test`) ─────────────

@@ -983,13 +983,17 @@ export async function getStatusBar(): Promise<{
   lastEventAt: Date | null;
   companiesTotal: number;
 }> {
-  return cachedQuery("stats:statusbar:v1", 60, async () => {
+  return cachedQuery("stats:statusbar:v2", 60, async () => {
+    // Total uses pg_class.reltuples (planner estimate, refreshed by autovacuum,
+    // within ~4% on these tables) — an exact count(*) seq-scans ~1.6M rows and
+    // took 3-4s under memory pressure, stalling every cold render.
     const rows = await sql`
       SELECT
         (SELECT count(*)::int FROM public.filings
          WHERE ingested_at >= current_date) AS filings_today,
         (SELECT max(ingested_at) FROM public.filings) AS last_event_at,
-        (SELECT count(*)::int FROM public.companies) AS companies_total
+        (SELECT reltuples::bigint::int FROM pg_class
+         WHERE oid = 'public.companies'::regclass) AS companies_total
     `;
     return rows[0] as { filingsToday: number; lastEventAt: Date | null; companiesTotal: number };
   });
@@ -1002,14 +1006,20 @@ export async function getStats(): Promise<{
   officers: number;
   pscs: number;
 }> {
-  return cachedQuery("stats:homepage:v1", 60, async () => {
+  return cachedQuery("stats:homepage:v2", 60, async () => {
+    // reltuples estimates instead of count(*) — the three exact counts together
+    // took ~10.8s on the droplet (measured 2026-06-11), which was the whole
+    // "slow homepage" problem. Estimates return in ~7ms.
     const rows = await sql`
       SELECT
-        (SELECT count(*)::int FROM public.companies)  AS companies,
+        (SELECT reltuples::bigint::int FROM pg_class
+         WHERE oid = 'public.companies'::regclass)     AS companies,
         (SELECT count(*)::int FROM public.filings
          WHERE ingested_at >= current_date)            AS filings_today,
-        (SELECT count(*)::int FROM public.officers)   AS officers,
-        (SELECT count(*)::int FROM public.psc)        AS pscs
+        (SELECT reltuples::bigint::int FROM pg_class
+         WHERE oid = 'public.officers'::regclass)      AS officers,
+        (SELECT reltuples::bigint::int FROM pg_class
+         WHERE oid = 'public.psc'::regclass)           AS pscs
     `;
     return rows[0] as { companies: number; filingsToday: number; officers: number; pscs: number };
   });
