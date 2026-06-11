@@ -1,6 +1,6 @@
 """Prompt templates. Version strings are baked into the cache key — bump them to invalidate."""
 
-PROMPT_VERSION = "anomaly_explanation_v2"
+PROMPT_VERSION = "anomaly_explanation_v3"
 
 SYSTEM_PROMPT = (
     "You are summarising a Companies House data pattern for a public transparency dashboard. "
@@ -40,7 +40,6 @@ def build_anomaly_prompt(features: dict) -> str:
             "Describe the statistical pattern. Two to three sentences."
         )
 
-    # Default: address_cluster
     address_parts = filter(None, [
         features.get("address_line_1"),
         features.get("locality"),
@@ -48,6 +47,34 @@ def build_anomaly_prompt(features: dict) -> str:
     ])
     address = ", ".join(address_parts) or "unknown address"
 
+    if kind == "bulk_registration":
+        agent = "yes" if features.get("formation_agent") else "no"
+        return (
+            f"Pattern type: bulk registration (many companies incorporated at one "
+            f"address on a single day)\n\n"
+            f"Data:\n"
+            f"- Address: {address}\n"
+            f"- Incorporation date: {features.get('inc_date') or 'unknown'}\n"
+            f"- Companies incorporated at this address that day: {features.get('companies_on_day', 0)}\n"
+            f"- Address is a known formation-agent address: {agent}\n\n"
+            "Describe the statistical pattern. Two to three sentences."
+        )
+
+    if kind == "officer_churn":
+        return (
+            f"Pattern type: officer churn (high appointment/resignation turnover "
+            f"at one company)\n\n"
+            f"Data:\n"
+            f"- Company registered address: {address}\n"
+            f"- Company status: {features.get('status') or 'unknown'}\n"
+            f"- Company incorporated on: {features.get('incorporated_on') or 'unknown'}\n"
+            f"- Officer appointments in the last 90 days: {features.get('appointments_90d', 0)}\n"
+            f"- Officer terminations in the last 90 days: {features.get('terminations_90d', 0)}\n"
+            f"- Total appointment/termination events in the last 90 days: {features.get('total_churn', 0)}\n\n"
+            "Describe the statistical pattern. Two to three sentences."
+        )
+
+    # Default: address_cluster
     return (
         f"Pattern type: address cluster\n\n"
         f"Data:\n"

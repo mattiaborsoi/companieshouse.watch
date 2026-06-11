@@ -51,6 +51,16 @@ function featuresToSnake(f: AnomalyFeatures) {
     nationality:           raw["nationality"] as string | undefined,
     recent_90_days:        (get("recent_90_days", "recent90Days") as number) ?? 0,
     recent_30_days:        (get("recent_30_days", "recent30Days") as number) ?? 0,
+    // bulk_registration fields
+    inc_date:              get("inc_date", "incDate") as string | undefined,
+    companies_on_day:      (get("companies_on_day", "companiesOnDay") as number) ?? 0,
+    formation_agent:       (get("formation_agent", "formationAgent") as boolean) ?? false,
+    // officer_churn fields
+    status:                raw["status"] as string | undefined,
+    incorporated_on:       get("incorporated_on", "incorporatedOn") as string | undefined,
+    appointments_90d:      (get("appointments_90d", "appointments90d") as number) ?? 0,
+    terminations_90d:      (get("terminations_90d", "terminations90d") as number) ?? 0,
+    total_churn:           (get("total_churn", "totalChurn") as number) ?? 0,
     // common
     company_count:         (get("company_count", "companyCount") as number) ?? 0,
     companies:             (get("companies", "companies") as AnomalyFeatures["companies"]) ?? [],
