@@ -10,14 +10,14 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "16.2.7",
+    "next": "16.2.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "postgres": "^3.4.4",
     "date-fns": "^4.4.0",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.5.4",
-    "lucide-react": "^1.17.0",
+    "lucide-react": "^1.18.0",
     "ioredis": "^5.11.1"
   },
   "devDependencies": {
@@ -29,7 +29,7 @@
     "postcss": "^8.5.10",
     "autoprefixer": "^10.4.20",
     "eslint": "^9",
-    "eslint-config-next": "16.2.6"
+    "eslint-config-next": "16.2.9"
   },
   "overrides": {
     "postcss": "$postcss"
