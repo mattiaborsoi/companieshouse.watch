@@ -1185,6 +1185,25 @@ export async function getCompaniesAtAddress(addressHash: string): Promise<Array<
   `;
 }
 
+// Sitemap feed: the most recently active companies. We don't list all ~1.6M
+// company pages (a single sitemap caps at 50k URLs and crawling them all is
+// exactly the bot load we're trying to bound) — the most recently-changed
+// ones are the highest-value, freshest pages for search engines. last_event_at
+// is indexed; first_seen_at is the fallback for companies with no event yet.
+export async function getSitemapCompanies(limit = 5000): Promise<
+  { companyNumber: string; lastMod: Date | null }[]
+> {
+  const rows = await sql<{ companyNumber: string; lastMod: Date | null }[]>`
+    SELECT company_number AS company_number,
+           COALESCE(last_event_at, last_full_refresh_at, first_seen_at) AS last_mod
+    FROM public.companies
+    WHERE dissolved_on IS NULL
+    ORDER BY COALESCE(last_event_at, last_full_refresh_at, first_seen_at) DESC NULLS LAST
+    LIMIT ${limit}
+  `;
+  return rows;
+}
+
 export async function getAnomalyForAddress(addressHash: string): Promise<{ id: string; score: number } | null> {
   const rows = await sql`
     SELECT id::text, score
