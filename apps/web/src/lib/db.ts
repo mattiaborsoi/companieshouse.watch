@@ -1188,17 +1188,23 @@ export async function getCompaniesAtAddress(addressHash: string): Promise<Array<
 // Sitemap feed: the most recently active companies. We don't list all ~1.6M
 // company pages (a single sitemap caps at 50k URLs and crawling them all is
 // exactly the bot load we're trying to bound) — the most recently-changed
-// ones are the highest-value, freshest pages for search engines. last_event_at
-// is indexed; first_seen_at is the fallback for companies with no event yet.
+// ones are the highest-value, freshest pages for search engines.
+//
+// Order strictly by last_event_at so the companies_last_event_idx btree
+// (last_event_at DESC) drives the sort — ~27ms for 5k rows. An earlier
+// COALESCE(last_event_at, …) ordering couldn't use the index and full-sorted
+// ~1.5M rows on every request (10-13s). Companies with no event yet are the
+// least useful sitemap entries anyway, so excluding them is fine.
 export async function getSitemapCompanies(limit = 5000): Promise<
   { companyNumber: string; lastMod: Date | null }[]
 > {
   const rows = await sql<{ companyNumber: string; lastMod: Date | null }[]>`
     SELECT company_number AS company_number,
-           COALESCE(last_event_at, last_full_refresh_at, first_seen_at) AS last_mod
+           last_event_at  AS last_mod
     FROM public.companies
     WHERE dissolved_on IS NULL
-    ORDER BY COALESCE(last_event_at, last_full_refresh_at, first_seen_at) DESC NULLS LAST
+      AND last_event_at IS NOT NULL
+    ORDER BY last_event_at DESC
     LIMIT ${limit}
   `;
   return rows;
