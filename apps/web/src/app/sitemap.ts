@@ -5,9 +5,12 @@ import { getSitemapCompanies, getAnomalies } from "@/lib/db";
 // fell back to brute-force link-walking every /c/* and /officer/* page — the
 // bulk of our bot load. This gives them a bounded, freshness-ranked list.
 //
-// Next serves this at /sitemap.xml. We revalidate hourly so it isn't
-// regenerated (a 5k-row query) on every crawler hit.
-export const revalidate = 3600;
+// Next serves this at /sitemap.xml. It MUST render at request time, not build
+// time: the build container has no DB access, so a build-time prerender (the
+// default for a metadata route) bakes in the empty fallback. force-dynamic
+// makes it query Postgres on each request — the queries are index-backed and
+// fast, and crawlers fetch the sitemap rarely.
+export const dynamic = "force-dynamic";
 
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ch.borsoi.co.uk";
 
