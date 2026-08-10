@@ -22,6 +22,7 @@ from .bulk_registration import detect_bulk_registration
 from .deferred import defer_event, drain_for_company, gc_old_deferred_events
 from .hydrator import hydrate_pending_companies
 from .identity_resolver import resolve_batch as resolve_identity_batch
+from .partitions import check_partition_coverage, ensure_partitions
 from .pattern_detector import detect_patterns
 from .press_resolver import resolve_press_batch
 from .social_poster import post_daily_anomaly
@@ -182,6 +183,13 @@ async def startup(ctx: dict) -> None:
         ),
     )
     ctx["pool"] = await get_pool()
+    # Close any partition gap before processing a single event — a restart is
+    # the most likely moment for someone to be recovering from exactly that
+    # failure, and waiting for the 02:00 cron would keep the pipeline down.
+    try:
+        await ensure_partitions()
+    except Exception:
+        log.exception("partition_ensure_failed_at_startup")
     log.info("worker_started")
 
 
@@ -220,6 +228,14 @@ class WorkerSettings:
         # hourly tick × batch of 8 = 192/day.
         cron(resolve_press_batch,      minute={47}),
         cron(post_daily_anomaly, hour={9}, minute={0}),
+        # Keep audit.* monthly partitions six months ahead. When these lapsed on
+        # 2026-07-01 every audit insert raised CheckViolationError and, because
+        # process_event writes the audit row in the same transaction as the
+        # upsert, the entire ingestion pipeline stopped dead for six weeks.
+        # Idempotent and cheap, so run it daily rather than monthly — that way a
+        # single missed tick can never reopen the gap.
+        cron(ensure_partitions,        hour={2}, minute={0}),
+        cron(check_partition_coverage, hour={2}, minute={5}),
     ]
     on_startup = startup
     on_shutdown = shutdown
