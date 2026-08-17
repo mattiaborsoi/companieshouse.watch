@@ -206,10 +206,18 @@ class WorkerSettings:
         # was ~130s of heavy SQL per 10-min window — enough to trip CPU alerts.
         # These detect slow-moving structural patterns, so hourly is plenty.
         # Staggered across the hour so they never overlap.
-        cron(detect_anomalies,        minute={0}),
-        cron(detect_director_velocity, minute={15}),
-        cron(detect_officer_churn,    minute={30}),
-        cron(detect_bulk_registration, minute={45}),
+        # detect_anomalies outgrew the global 300s job_timeout once ingestion
+        # resumed and the tables grew ~50% (companies 1.6M -> 2.4M): from
+        # 2026-08-16 it was killed at exactly 300s on 23 of 24 runs, burning a
+        # full core each hour and never writing a result, so address_cluster
+        # anomalies went stale. It does a full re-scan of companies +
+        # appointments, and address clusters move slowly, so run it 4x/day with
+        # a timeout that lets it actually finish. The proper fix is incremental
+        # detection keyed on registered_address_hash changes.
+        cron(detect_anomalies,        hour={0, 6, 12, 18}, minute={0}, timeout=1800),
+        cron(detect_director_velocity, minute={15}, timeout=900),
+        cron(detect_officer_churn,    minute={30}, timeout=900),
+        cron(detect_bulk_registration, minute={45}, timeout=900),
         # Phase C: hydrate companies for which deferred events are waiting.
         # Every 2 min, batch of 30 = 900 CH calls/hour worst-case (well under 2/sec
         # CH limit). Drains naturally when there are no pending hydrations.
