@@ -261,7 +261,14 @@ reflected there — when in doubt, the migration files in `packages/db/alembic/v
 Key things to know:
 - `public.companies` — primary key is `company_number` (text); `registered_address_hash` is the anomaly clustering key. `name_normalised` (lowercased, suffixes stripped) is the column the search code queries — it has a GIN trigram index.
 - `public.officers.name_normalised` — same idea, surname-first form (e.g. "smith stephen bryan"); also GIN-trigram-indexed.
-- `audit.events` — append-only, partitioned by month; never delete
+- `audit.events` — append-only, partitioned by month. **Retention: raw event
+  partitions are dropped once they age out.** On 2026-09-21 the disk hit 92%
+  (DB 62 GB of a 77 GB volume) and `events_2026_05` + `events_2026_06`
+  (13.8M rows, 21.7 GB) were dropped, taking the disk to 64%. Events grow
+  ~7-9 GB/month, so expect to drop the oldest partitions every few months —
+  `DROP TABLE audit.events_YYYY_MM` is instant and reclaims space immediately
+  (unlike DELETE). This only removes the raw CH stream log; the derived
+  entity tables (companies/officers/filings/psc) are untouched.
 - `audit.searches` — every search query, partitioned by month (migration 0010). Zero-result queries are the highest signal for what features to build next.
 - `audit.llm_calls` — every LLM call logged, including cache hits; partitioned by month
 - `meta.deferred_events` — Phase C hydration queue for events whose company isn't known yet (migration 0009)
