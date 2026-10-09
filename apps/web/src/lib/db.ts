@@ -1008,7 +1008,7 @@ export async function getStats(): Promise<{
 }> {
   return cachedQuery("stats:homepage:v2", 60, async () => {
     // reltuples estimates instead of count(*) — the three exact counts together
-    // took ~10.8s on the droplet (measured 2026-06-11), which was the whole
+    // took ~10.8s in production (measured 2026-06-11), which was the whole
     // "slow homepage" problem. Estimates return in ~7ms.
     const rows = await sql`
       SELECT

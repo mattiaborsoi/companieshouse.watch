@@ -29,7 +29,7 @@ log = structlog.get_logger()
 # Domains we never want to surface as a company's official website.
 _EXCLUDED_DOMAINS: frozenset[str] = frozenset({
     # Our own
-    "companieshouse.watch", "ch.borsoi.co.uk", "borsoi.co.uk",
+    "companieshouse.watch",
     # Companies House itself
     "find-and-update.company-information.service.gov.uk",
     "companieshouse.gov.uk", "gov.uk",

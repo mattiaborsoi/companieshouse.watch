@@ -85,6 +85,8 @@ export default async function AnomaliesPage() {
               const f = a.features;
               const subject = a.kind === "director_velocity"
                 ? (f.officer_name ?? "Unknown officer")
+                : a.kind === "officer_churn"
+                ? (f.company_name ?? a.detectionKey)
                 : (
                     [f.address_line_1, f.locality, f.postcode].filter(Boolean).join(", ")
                     || a.detectionKey.slice(0, 16) + "…"

@@ -37,3 +37,6 @@ Thumbs.db
 
 # AI assistant working memory (local only — not for the repo)
 claude_memory.md
+
+# TypeScript incremental build cache
+*.tsbuildinfo

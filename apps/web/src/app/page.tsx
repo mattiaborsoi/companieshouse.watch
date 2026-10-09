@@ -277,13 +277,8 @@ export default async function HomePage() {
               </Link>
             ))}</div>
 
-          <div className="flex items-center gap-3 max-w-lg">
-            <div className="flex-1">
-              <SearchBox />
-            </div>
-            <Link href="/support" className="btn-support shrink-0">
-              Support ♥
-            </Link>
+          <div className="max-w-lg">
+            <SearchBox />
           </div>
         </div>
 

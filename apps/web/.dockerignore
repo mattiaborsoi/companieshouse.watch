@@ -1,0 +1,9 @@
+# A host-installed node_modules gets layered over the image's own deps by the
+# Dockerfile's `COPY . .`, breaking `next build` with
+# "Cannot find module '../server/require-hook'". Keep host build output out.
+node_modules
+.next
+npm-debug.log*
+.env
+.env.local
+*.tsbuildinfo

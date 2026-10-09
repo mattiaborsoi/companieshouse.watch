@@ -17,8 +17,8 @@ Full spec is in `BUILD_PLAN.md` (architecture, phases, AI policy) and `DATA_MODE
 ## Current implementation state
 
 **Phases 1–3 complete + Phase C (decoupled hydration) + assorted Phase-4-ish enrichments.**
-The site is live at https://ch.borsoi.co.uk on a DigitalOcean droplet (`infra/docker/docker-compose.yml`).
-Data is streaming continuously from Companies House.
+The full stack runs from `infra/docker/docker-compose.yml`. When deployed it
+streams continuously from Companies House.
 
 ### Phase 1 — Data pipeline (complete)
 - `infra/docker/docker-compose.yml` — full stack (Postgres 16, Redis 7, streamer, worker, web, migrate, test)
@@ -73,14 +73,13 @@ Data is streaming continuously from Companies House.
 
 ### Caching & observability (complete)
 - **Redis query cache** in `apps/web/src/lib/db.ts` (`cachedQuery()`): 60s TTL on `getStatusBar` (NavBar) and `getStats` (homepage stats grid). Silent fallback to live query on any cache error.
-- **Redis maxmemory cap**: 512 MB with `volatile-lru` + `activedefrag yes` — prevents the `ch:rest:*` cache from filling the droplet's RAM (set in `infra/docker/docker-compose.yml`, applied live via CONFIG SET).
+- **Redis maxmemory cap**: 512 MB with `volatile-lru` + `activedefrag yes` — prevents the `ch:rest:*` cache from exhausting host RAM (set in `infra/docker/docker-compose.yml`, applied live via CONFIG SET).
 - **Per-page revalidate=60s** on `/c/[number]` and `/officer/[id]` for ISR.
 - **Per-company OG/Twitter cards + meta description** via `generateMetadata()` and `buildCompanyDescription()` in `utils.ts`.
 
 ### Not yet built
 - XBRL financials parser (the `public.financials` table exists but isn't populated)
 - A proper analytics dashboard (query `audit.searches` directly until volume justifies it)
-- Sitemap.xml (deferred SEO item)
 
 **Web app runs on port 3030** in production (ports 3000 and 3001 were occupied by other containers on the dev machine).
 
@@ -149,7 +148,7 @@ make up             # restart services
       tests/
         test_address_normaliser.py
       Dockerfile
-    llm-gateway/        # Phase 3 — not yet created
+    llm-gateway/        # FastAPI: the only service allowed to call Anthropic
     web/                # Next.js 15 frontend
       src/app/
         page.tsx        # landing page (SSE live ticker + stats)
@@ -216,7 +215,7 @@ Defined in `.env` (gitignored). Docker Compose services receive them via the `en
 | `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD` | worker | Optional auto-poster |
 | `SITE_URL` | worker | Used in Bluesky posts and `NEXT_PUBLIC_SITE_URL` default for web |
 
-**Note**: the droplet has TWO `.env` files — `/opt/.../.env` (project root) and `/opt/.../infra/docker/.env`. Docker Compose invoked with `-f infra/docker/docker-compose.yml` reads from the **compose-file directory** by default. New secrets go in `infra/docker/.env`.
+**Note**: there are TWO `.env` files — the project root one and `infra/docker/.env`. Docker Compose invoked with `-f infra/docker/docker-compose.yml` reads from the **compose-file directory** by default. New secrets go in `infra/docker/.env`.
 
 ---
 
@@ -307,28 +306,27 @@ Key things to know:
 
 ---
 
-## Production deployment
+## Deployment
 
-Live droplet: `root@161.35.193.48` (DigitalOcean, 2 vCPU / 4 GB / Ubuntu).
-SSH key: `~/.ssh/digitalocean_ai`.
+The stack is plain Docker Compose, so it runs anywhere Docker does — a laptop,
+a VM, or any cloud host. There is no hosting-provider-specific code.
 
 ```bash
-# Standard deploy
-ssh -i ~/.ssh/digitalocean_ai root@161.35.193.48
-cd /opt/companieshouse/companieshouse.watch
 git pull --ff-only
 docker compose -f infra/docker/docker-compose.yml run --rm migrate   # if migrations
 docker compose -f infra/docker/docker-compose.yml build web && \
   docker compose -f infra/docker/docker-compose.yml up -d web
 ```
 
-Public domain `ch.borsoi.co.uk` is proxied by Cloudflare; nginx on the droplet
-terminates TLS and forwards to the `web` container on port 3030.
+In the original deployment a reverse proxy terminated TLS and forwarded to the
+`web` container on port 3030, behind a CDN. Set `SITE_URL` to the public origin
+so canonical URLs, OG tags and the sitemap are generated correctly; it defaults
+to `http://localhost:3030`.
 
-Cloudflare Web Analytics for `ch.borsoi.co.uk` is captured via the parent
-`borsoi.co.uk` Automatic Setup — **no script tag is injected by the app**.
-
-After Phase 1: build the Next.js frontend (Phase 2 — see `BUILD_PLAN.md` §12).
+**Note**: there are TWO `.env` files — the project root one and
+`infra/docker/.env`. Docker Compose invoked with
+`-f infra/docker/docker-compose.yml` reads from the **compose-file directory**
+by default, so new secrets belong in `infra/docker/.env`.
 
 ---
 

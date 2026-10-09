@@ -32,7 +32,7 @@ _MAX_FAVICON_BYTES = 200_000  # 200 KB — favicons should be much smaller
 _TIMEOUT_SECONDS = 8.0
 _MAX_REDIRECTS = 3
 _USER_AGENT = (
-    "companieshouse.watch/1.0 (+https://ch.borsoi.co.uk/about) "
+    "companieshouse.watch/1.0 (+https://github.com/mattiaborsoi/companieshouse.watch) "
     "Mozilla/5.0 (compatible; ch-bot/1.0)"
 )
 _DOMAIN_MIN_INTERVAL = 12.0   # 5 requests per domain per minute

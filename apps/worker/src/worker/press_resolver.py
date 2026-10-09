@@ -23,7 +23,7 @@ log = structlog.get_logger()
 
 
 GDELT_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
-USER_AGENT = "companieshouse.watch/1.0 (+https://ch.borsoi.co.uk/about)"
+USER_AGENT = "companieshouse.watch/1.0 (+https://github.com/mattiaborsoi/companieshouse.watch)"
 
 # GDELT explicitly asks for ≤1 req per 5 s — anything faster returns a
 # plain-text "please limit" message in place of JSON.

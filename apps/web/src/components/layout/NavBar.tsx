@@ -105,7 +105,6 @@ export default function NavBar() {
             <AnomalyNavBadge />
           </Link>
           <Link href="/feed" className="nav-link">Feed</Link>
-          <Link href="/support" className="nav-link" style={{ color: "var(--alert)" }}>Support ♥</Link>
         </nav>
       </div>
     </header>

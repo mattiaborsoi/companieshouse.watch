@@ -4,7 +4,7 @@ import NavBar from "@/components/layout/NavBar";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://ch.borsoi.co.uk"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3030"),
   title: {
     template: "%s | companieshouse.watch",
     default: "companieshouse.watch — Real-time UK Companies House tracker",
@@ -21,26 +21,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="flex-1">{children}</main>
 
         <footer className="mt-16 border-t border-[var(--border)] bg-[var(--bg-surface)]">
-          {/* Support strip */}
-          <div className="border-b border-[var(--border-subtle)] py-3 px-4">
-            <div className="mx-auto max-w-6xl flex flex-col sm:flex-row items-center justify-between gap-2">
-              <p className="font-mono text-xs text-[var(--text-muted)] text-center sm:text-left">
-                Running on{" "}
-                <span className="text-[var(--text-secondary)]">~£41/mo</span>
-                {" "}in infrastructure.{" "}
-                <span className="text-[var(--text-secondary)]">0 sponsors</span>
-                {" "}covering it so far.
-              </p>
-              <Link
-                href="/support"
-                className="font-mono text-xs uppercase tracking-widest shrink-0"
-                style={{ color: "var(--alert)" }}
-              >
-                Support the project ♥
-              </Link>
-            </div>
-          </div>
-
           {/* Main footer links */}
           <div className="py-5 px-4">
             <div className="mx-auto max-w-6xl flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -59,7 +39,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </p>
               <div className="flex items-center gap-4 font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
                 <Link href="/about"   className="hover:text-[var(--accent)] transition-colors">About</Link>
-                <Link href="/support" className="hover:text-[var(--accent)] transition-colors">Support</Link>
                 <Link href="/legal"   className="hover:text-[var(--accent)] transition-colors">Legal</Link>
                 <a href="https://github.com/mattiaborsoi/companieshouse.watch"
                    target="_blank" rel="noopener noreferrer"

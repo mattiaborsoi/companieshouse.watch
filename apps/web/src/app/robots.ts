@@ -92,6 +92,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: "/",
       })),
     ],
-    sitemap: "https://ch.borsoi.co.uk/sitemap.xml",
+    sitemap: `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3030"}/sitemap.xml`,
   };
 }

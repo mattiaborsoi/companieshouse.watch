@@ -1,136 +1,130 @@
 # companieshouse.watch
 
-**Live demo → [ch.borsoi.co.uk](https://ch.borsoi.co.uk)**
+**Every change to the UK company register, as it happens — with the odd patterns flagged automatically.**
 
-A free, open-source, real-time view of the UK Companies House register — with automated anomaly detection and AI-generated plain-English explanations of suspicious patterns.
+Companies House publishes every filing, director appointment and ownership
+change for all ~5.6 million UK companies. It's completely open data, and it's
+very hard to actually watch. This project streamed it live, made it
+searchable, and looked for the shapes that tend to matter: hundreds of
+companies sharing one front door, a single director collecting dozens of
+appointments in a month, a company cycling through directors.
 
-**Audience:** Journalists, OSINT researchers, fraud/compliance analysts, curious citizens.
+Built for journalists, OSINT researchers and compliance analysts — and anyone
+curious about who really owns what.
 
-## Features
-
-- **Live feed** — every filing, officer appointment, and PSC change as it streams from Companies House, with category filters and pause
-- **Company profiles** — registered address, SIC codes with human-readable descriptions, full filing history (linked to CH viewer), officers, PSCs, and anomaly warnings
-- **Officer/person profiles** — appointment history, nationality, service address, and date of birth
-- **Search** — company name, number, officer/director name, or UK postcode; falls back to CH REST API when not yet in local database
-- **Anomaly detection** — four detectors running every 10 minutes, scored 0–100:
-  - Address clusters (many companies at one address)
-  - Director velocity (one person across many active companies)
-  - Officer churn (high appointment/resignation rate at one company)
-  - Bulk registration (many incorporations at one address on the same day)
-- **AI explanations** — on-demand plain-English summaries of flagged anomalies, powered by Anthropic Claude Haiku with hard spend caps
-
-> This project is in active development. See [Build Plan](BUILD_PLAN.md) for the roadmap.
+> **Archived.** This ran as a live service and is no longer hosted. The code
+> is complete and self-hostable — see [INSTALL.md](INSTALL.md). The screenshots
+> below are from a local instance.
 
 ---
 
-## Quick start
+## The live register
 
-### Prerequisites
-- Docker + Docker Compose
-- Companies House API keys ([register here](https://developer-specs.company-information.service.gov.uk))
+Everything arriving from Companies House in real time, with running totals and
+the highest-scoring anomalies surfaced at the top.
 
-### Setup
+![Homepage](docs/screenshots/homepage.png)
 
-```bash
-# 1. Clone and configure
-git clone https://github.com/mattiaborsoi/companieshouse.watch.git
-cd companieshouse.watch
-cp .env.example .env
-# Edit .env with your CH_REST_KEY and CH_STREAM_KEY
+## The feed
 
-# 2. Create local data directories
-make setup
+Every filing as it lands, filterable by type, pausable when it moves too fast.
 
-# 3. Start the database and run migrations
-make infra
-make db-migrate
+![Live feed](docs/screenshots/feed.png)
 
-# 4. Start everything
-make up
+## Company profiles
 
-# 5. Watch it go
-make logs
-```
+Filing history, current and former officers, people with significant control,
+plain-English descriptions of the industry codes, and the company's own
+website and press coverage pulled in automatically.
 
-After a few seconds you should see the streamer connecting to the Companies House streams and the worker processing events. Verify with:
+![Company profile](docs/screenshots/company-profile.png)
 
-```bash
-make db-shell
-# Then in psql:
-SELECT count(*) FROM public.filings;
-SELECT count(*) FROM public.companies;
-```
+## People
 
----
+The same view from the other side — every appointment a director holds, past
+and present, including likely matches for the same person recorded under
+slightly different details.
 
-## Architecture
+![Officer profile](docs/screenshots/officer-profile.png)
 
-```
-CH Streaming API ──▶ streamer ──▶ Redis (arq queue) ──▶ worker(s) ──▶ Postgres
-CH REST API      ──────────────────────────────────────▶ worker(s) (hydration)
-```
+## Search
 
-Five services, all running in Docker:
+By company name, company number, director name, or postcode. Anything not yet
+held locally is fetched from Companies House on the spot.
 
-| Service | Description |
+![Search](docs/screenshots/search-companies.png)
+
+## Pattern detection
+
+Four detectors run on a schedule and score what they find from 0 to 100:
+
+| Pattern | What it looks for |
 |---|---|
-| `postgres` | Primary data store (Postgres 16) |
-| `redis` | Job queue, stream timepoints, rate-limit counters (Redis 7) |
-| `streamer` | Long-lived process consuming 4 CH streams |
-| `worker` | arq workers processing events into Postgres |
-| `llm-gateway` | *(Phase 3)* FastAPI service owning the Anthropic API key |
+| **Address cluster** | Many companies registered at a single address |
+| **Director velocity** | One person appointed to unusually many companies, fast |
+| **Officer churn** | A company cycling through directors |
+| **Bulk registration** | A batch of companies incorporated at one address on one day |
+
+![Anomalies](docs/screenshots/anomalies-list.png)
+
+Each one opens into the evidence behind the score — the companies involved,
+the directors they share, and when it all happened. An optional AI summary
+explains the pattern in plain English, and is careful to say when a boring
+explanation fits: most shared addresses are just accountants and formation
+agents.
+
+![Anomaly detail](docs/screenshots/anomaly-detail.png)
+
+## On a phone
+
+<p>
+  <img src="docs/screenshots/mobile-homepage.png" width="32%" alt="Homepage on mobile" />
+  <img src="docs/screenshots/mobile-feed.png" width="32%" alt="Feed on mobile" />
+  <img src="docs/screenshots/mobile-company-profile.png" width="32%" alt="Company profile on mobile" />
+</p>
 
 ---
 
-## Common commands
+## How it's built
 
-```bash
-make setup          # First-time: create local data directories
-make up             # Start full stack
-make down           # Stop (data preserved on disk)
-make logs           # Tail all logs
-make db-migrate     # Apply pending schema migrations
-make db-shell       # psql shell
-make test           # Run test suite in Docker
-make build          # Rebuild application images
-make ps             # Container health status
-```
+A Next.js front end over Postgres, fed by two small Python services: one
+holding long-lived connections to the Companies House streams, the other
+working through the queue and writing to the database. Redis sits between
+them. Anything touching the Anthropic API goes through a single gateway
+service that owns the key and enforces hard spend caps.
 
----
+The whole thing is Docker Compose — one command to run it.
 
-## Data
+**Next.js · TypeScript · Python · PostgreSQL · Redis · Docker · Anthropic Claude**
 
-All data is sourced from [Companies House](https://www.companieshouse.gov.uk/) under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). We attribute and pass through this licence for all data we redistribute.
-
-Local data is stored in `data/` (gitignored) and bind-mounted into the containers. This directory survives container rebuilds.
+→ **[Running it yourself](INSTALL.md)** · [Architecture](CLAUDE.md) · [Database schema](DATA_MODEL.md) · [AI rules](AI_POLICY.md)
 
 ---
 
-## AI features
+## What it could be
 
-AI-generated content uses Anthropic Claude (Haiku for bulk operations). All AI features comply with the [AI Policy](AI_POLICY.md):
-- Fixed prompt templates only; no user-supplied prompts, ever
-- Hard daily (£5) and monthly (£100) spend caps
-- Every output labelled "AI generated, [date]"
-- 24-hour takedown SLA
+Things that were designed but never finished:
 
----
-
-## Self-hosting
-
-This project is designed to be self-hostable. Docker Compose covers the full stack. See `.env.example` for all required environment variables.
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) (coming in Phase 5).
+- **Company accounts.** Filed accounts are XBRL; the table exists but nothing
+  parses them yet. Turnover and headcount trends would make the profiles far
+  more useful.
+- **Watchlists and alerts.** Follow a company or a director, get told when
+  something changes.
+- **Smarter detection.** The detectors re-scan everything on a timer. Running
+  them incrementally, as events arrive, would be both cheaper and faster.
+- **An API.** Everything here is public data — it should be queryable by
+  other people's tools.
 
 ---
 
-## License
+## Data and licence
 
-MIT — see [LICENSE](LICENSE).
+All company data comes from [Companies House](https://www.companieshouse.gov.uk/)
+under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/),
+and is passed through under the same licence.
 
-Companies House data: Open Government Licence v3.0.
-AI-generated summaries: MIT (same as codebase).
+Nothing is stored beyond what is already on the public register. Dates of
+birth are held as month and year only, matching how Companies House itself
+publishes them, and protected PSCs are never shown.
+
+Code is MIT — see [LICENSE](LICENSE).

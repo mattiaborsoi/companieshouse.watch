@@ -12,7 +12,7 @@ import { getSitemapCompanies, getAnomalies } from "@/lib/db";
 // fast, and crawlers fetch the sitemap rarely.
 export const dynamic = "force-dynamic";
 
-const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ch.borsoi.co.uk";
+const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3030";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
@@ -22,7 +22,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE}/search`, changeFrequency: "weekly", priority: 0.5 },
     { url: `${BASE}/about`, changeFrequency: "monthly", priority: 0.3 },
     { url: `${BASE}/methodology`, changeFrequency: "monthly", priority: 0.3 },
-    { url: `${BASE}/support`, changeFrequency: "monthly", priority: 0.2 },
     { url: `${BASE}/legal`, changeFrequency: "yearly", priority: 0.2 },
   ];
 
