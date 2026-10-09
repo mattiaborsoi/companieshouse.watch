@@ -1,13 +1,13 @@
 name: security
 
+# The daily schedule was removed when the project was archived — a dormant
+# repo produced a failing run (and an email) every time a new advisory
+# landed upstream. Still runs on push/PR, so it works if development resumes.
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
-  schedule:
-    # Daily at 03:30 UTC — catches new CVEs even on quiet weeks.
-    - cron: "30 3 * * *"
 
 permissions:
   contents: read
